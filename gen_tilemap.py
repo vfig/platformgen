@@ -98,14 +98,14 @@ class TileMapRowView(object):
         self.width = width
 
     def __getitem__(self, x):
-        if x >= self.x and x < self.x + self.width:
-            return self.tile_map._tiles[self.y][x]
+        if x >= 0 and x < self.width:
+            return self.tile_map._tiles[self.y][self.x + x]
         else:
             raise IndexError(x)
 
     def __setitem__(self, x, value):
-        if x >= self.x and x < self.x + self.width:
-            self.tile_map._tiles[self.y][x] = value
+        if x >= 0 and x < self.width:
+            self.tile_map._tiles[self.y][self.x + x] = value
         else:
             raise IndexError(x)
 
@@ -122,8 +122,8 @@ class TileMapView(object):
         self.height = height
 
     def __getitem__(self, y):
-        if y >= self.y and y < self.y + self.height:
-            return TileMapRowView(self.tile_map, y)
+        if y >= 0 and y < self.height:
+            return TileMapRowView(self.tile_map, self.x, self.y + y, self.width)
         else:
             raise IndexError(y)
 
@@ -134,24 +134,26 @@ class TileMapView(object):
 
     def subview(self, x=None, y=None, width=None, height=None):
         """Return a subview at the given location (default top left) and size (default maximum)."""
-        if x is None: x = self.x
-        if y is None: y = self.y
-        if width is None: width = self.width - x
-        if height is None: height = self.height - y
-        return self.__class__(tile_map=self.tile_map, x=x, y=y, width=width, height=height)
+        if x is None: x = 0
+        if y is None: y = 0
+        if width is None: width = self.width 
+        if height is None: height = self.height
+        return self.__class__(tile_map=self.tile_map,
+            x=(self.x + x), y=(self.y + y),
+            width=width, height=height)
 
     def split_x(self, x):
         """Return a pair of views that are the halves of the tile map split vertically at `x`."""
         return (
-            self.subview(self.x, self.y, x, self.height),
-            self.subview(self.x + x, self.y, self.width - x, self.height)
+            self.subview(0, 0, x, self.height),
+            self.subview(x, 0, self.width - x, self.height)
             )
 
     def split_y(self, y):
         """Return a pair of views that are the halves of the tile map split horizontally at `y`."""
         return (
-            self.subview(self.x, self.y, self.width, y),
-            self.subview(self.x, self.y + y, self.width, self.height - y)
+            self.subview(0, 0, self.width, y),
+            self.subview(0, y, self.width, self.height - y)
             )
 
 if __name__ == '__main__':
