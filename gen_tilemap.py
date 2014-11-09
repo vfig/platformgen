@@ -39,7 +39,7 @@ random.seed(seed)
 def generate_rooms(tile_map):
     # Recursively partition the tile map
     final_rooms = []
-    current_rooms = [tile_map.subview()]
+    current_rooms = [Room.clone(tile_map)]
     def room_needs_split(room):
         return (room.width > ROOM_MAXIMUM_WIDTH or room.height > ROOM_MAXIMUM_HEIGHT)
     while current_rooms:
@@ -88,18 +88,16 @@ def generate_random_walls(room):
     left_hand = (random.random() < 0.5)
 
     # Determine wall size
-    left_wall_width = getattr(room, 'left_wall_width', 0)
-    right_wall_width = getattr(room, 'right_wall_width', 0)
-    other_wall_width = (right_wall_width if left_hand else left_wall_width)
+    other_wall_width = (room.right_wall_width if left_hand else room.left_wall_width)
     max_width = min(room.width - WALL_MINIMUM - other_wall_width, WALL_MAXIMUM)
     wall_width = random.randrange(WALL_MINIMUM, max_width)
 
     # Create the wall (if there isn't one already)
     if wall:
-        if left_hand and left_wall_width == 0:
+        if left_hand and room.left_wall_width == 0:
             room[:wall_width,:] = TILE_WALL
             room.left_wall_width = wall_width
-        elif not left_hand and right_wall_width == 0:
+        elif not left_hand and room.right_wall_width == 0:
             room[room.width - wall_width:,:] = TILE_WALL
             room.right_wall_width = wall_width
 
@@ -108,9 +106,7 @@ def generate_required_walls(room, left_hand=False):
     wall = False
 
     # Determine wall size
-    left_wall_width = getattr(room, 'left_wall_width', 0)
-    right_wall_width = getattr(room, 'right_wall_width', 0)
-    other_wall_width = (right_wall_width if left_hand else left_wall_width)
+    other_wall_width = (room.right_wall_width if left_hand else room.left_wall_width)
     max_width = min(room.width - WALL_MINIMUM - other_wall_width, WALL_MAXIMUM)
     wall_width = random.randrange(WALL_MINIMUM, max_width)
 
@@ -132,10 +128,10 @@ def generate_required_walls(room, left_hand=False):
 
     # Create the wall (if there isn't one already)
     if wall:
-        if left_hand and left_wall_width == 0:
+        if left_hand and room.left_wall_width == 0:
             room[:wall_width,:] = TILE_WALL
             room.left_wall_width = wall_width
-        elif not left_hand and right_wall_width == 0:
+        elif not left_hand and room.right_wall_width == 0:
             room[room.width - wall_width:,:] = TILE_WALL
             room.right_wall_width = wall_width
 
@@ -193,6 +189,12 @@ class TileMap(object):
         self.y = y
         self.width = width
         self.height = height
+
+    @classmethod
+    def clone(cls, tile_map):
+        return cls(x=tile_map.x, y=tile_map.y,
+            width=tile_map.width, height=tile_map.height,
+            storage=tile_map.storage)
 
     def _parse_subscript(self, subscript):
         assert isinstance(subscript, tuple)
@@ -292,6 +294,15 @@ class TileMap(object):
             self.subview(0, 0, self.width, y),
             self.subview(0, y, self.width, self.height - y)
             )
+
+class Room(TileMap):
+    def __init__(self, *args, **kwargs):
+        super(Room, self).__init__(*args, **kwargs)
+        self.filled = False
+        self.floor_height = 0
+        self.ceiling_height = 0
+        self.left_wall_width = 0
+        self.right_wall_width = 0
 
 if __name__ == '__main__':
     main()
