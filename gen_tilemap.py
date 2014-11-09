@@ -17,10 +17,10 @@ seed = 1415535932
 print "random seed:", seed
 random.seed(seed)
 
-def create_rooms(tile_map):
+def generate_rooms(tile_map):
     # Recursively partition the tile map
     final_rooms = []
-    current_rooms = [tile_map.view()]
+    current_rooms = [TileMapView(tile_map, 0, 0, tile_map.width, tile_map.height)]
     def room_needs_split(room):
         return (room.width > ROOM_MAXIMUM_WIDTH or room.height > ROOM_MAXIMUM_HEIGHT)
     while current_rooms:
@@ -51,7 +51,7 @@ def create_rooms(tile_map):
 def main():
     tile_size = 16
     tile_map = TileMap(256, 128)
-    rooms = create_rooms(tile_map)
+    rooms = generate_rooms(tile_map)
 
     # # Fill in the views
     # for i, room in enumerate(rooms, start=1):
@@ -77,66 +77,6 @@ def main():
 # split the dungeon into two sub-dungeons
 
 class TileMap(object):
-    class RowView(object):
-        def __init__(self, tile_map, x, y, width):
-            assert x >= 0
-            assert y >= 0
-            assert (x + width) <= tile_map.width
-            self.tile_map = tile_map
-            self.x = x
-            self.y = y
-            self.width = width
-
-        def __getitem__(self, x):
-            if x >= self.x and x < self.x + self.width:
-                return self.tile_map._tiles[self.y][x]
-            else:
-                raise IndexError(x)
-
-        def __setitem__(self, x, value):
-            if x >= self.x and x < self.x + self.width:
-                self.tile_map._tiles[self.y][x] = value
-            else:
-                raise IndexError(x)
-
-    class View(object):
-        def __init__(self, tile_map, x, y, width, height):
-            assert x >= 0
-            assert y >= 0
-            assert (x + width) <= tile_map.width 
-            assert (y + height) <= tile_map.height
-            self.tile_map = tile_map
-            self.x = x
-            self.y = y
-            self.width = width
-            self.height = height
-
-        def __getitem__(self, y):
-            if y >= self.y and y < self.y + self.height:
-                return RowView(self.tile_map, y)
-            else:
-                raise IndexError(y)
-
-        def fill(self, value):
-            for y in range(self.y, self.y + self.height):
-                for x in range(self.x, self.x + self.width):
-                    self.tile_map._tiles[y][x] = value
-
-        def split_x(self, x):
-            """Return a pair of views that are the halves of the tile map split vertically at `x`."""
-            return (
-                TileMap.View(self.tile_map, self.x, self.y, x, self.height),
-                TileMap.View(self.tile_map, self.x + x, self.y, self.width - x, self.height)
-                )
-
-        def split_y(self, y):
-            """Return a pair of views that are the halves of the tile map split horizontally at `y`."""
-            return (
-                TileMap.View(self.tile_map, self.x, self.y, self.width, y),
-                TileMap.View(self.tile_map, self.x, self.y + y, self.width, self.height - y)
-                )
-
-    # TileMap
     def __init__(self, width, height):
         self.width = width
         self.height = height
@@ -145,10 +85,74 @@ class TileMap(object):
             self._tiles.append([0] * self.width)
 
     def __getitem__(self, index):
-        return TileMap.RowView(self, 0, index, self.width)
+        return TileMapRowView(self, 0, index, self.width)
 
-    def view(self):
-        return TileMap.View(self, 0, 0, self.width, self.height)
+class TileMapRowView(object):
+    def __init__(self, tile_map, x, y, width):
+        assert x >= 0
+        assert y >= 0
+        assert (x + width) <= tile_map.width
+        self.tile_map = tile_map
+        self.x = x
+        self.y = y
+        self.width = width
+
+    def __getitem__(self, x):
+        if x >= self.x and x < self.x + self.width:
+            return self.tile_map._tiles[self.y][x]
+        else:
+            raise IndexError(x)
+
+    def __setitem__(self, x, value):
+        if x >= self.x and x < self.x + self.width:
+            self.tile_map._tiles[self.y][x] = value
+        else:
+            raise IndexError(x)
+
+class TileMapView(object):
+    def __init__(self, tile_map, x, y, width, height):
+        assert x >= 0
+        assert y >= 0
+        assert (x + width) <= tile_map.width
+        assert (y + height) <= tile_map.height
+        self.tile_map = tile_map
+        self.x = x
+        self.y = y
+        self.width = width
+        self.height = height
+
+    def __getitem__(self, y):
+        if y >= self.y and y < self.y + self.height:
+            return TileMapRowView(self.tile_map, y)
+        else:
+            raise IndexError(y)
+
+    def fill(self, value):
+        for y in range(self.y, self.y + self.height):
+            for x in range(self.x, self.x + self.width):
+                self.tile_map._tiles[y][x] = value
+
+    def subview(self, x=None, y=None, width=None, height=None):
+        """Return a subview at the given location (default top left) and size (default maximum)."""
+        if x is None: x = self.x
+        if y is None: y = self.y
+        if width is None: width = self.width - x
+        if height is None: height = self.height - y
+        return self.__class__(tile_map=self.tile_map, x=x, y=y, width=width, height=height)
+
+    def split_x(self, x):
+        """Return a pair of views that are the halves of the tile map split vertically at `x`."""
+        return (
+            self.subview(self.x, self.y, x, self.height),
+            self.subview(self.x + x, self.y, self.width - x, self.height)
+            )
+
+    def split_y(self, y):
+        """Return a pair of views that are the halves of the tile map split horizontally at `y`."""
+        return (
+            self.subview(self.x, self.y, self.width, y),
+            self.subview(self.x, self.y + y, self.width, self.height - y)
+            )
 
 if __name__ == '__main__':
     main()
