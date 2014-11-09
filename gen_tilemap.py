@@ -4,6 +4,9 @@ from color import ColorGenerator
 from gui import TileMapGUI
 
 # Generation parameters
+TILE_MAP_WIDTH = 192
+TILE_MAP_HEIGHT = 64
+
 ROOM_SPLIT_X_CHANCE = 0.5
 ROOM_MINIMUM_HEIGHT = 6
 ROOM_MAXIMUM_HEIGHT = 16
@@ -73,8 +76,8 @@ def generate_floor_and_ceiling(room):
     room.subview(0, 0, room.width, room.ceiling_height).fill(TILE_CEILING)
 
 def main():
-    tile_size = 16
-    tile_map = TileMap(256, 128)
+    tile_size = 32
+    tile_map = TileMap(TILE_MAP_WIDTH, TILE_MAP_HEIGHT)
     rooms = generate_rooms(tile_map)
     for room in rooms:
         generate_floor_and_ceiling(room)
