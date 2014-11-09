@@ -33,7 +33,7 @@ class TileMapGUI(object):
         self.canvas.focus_set()
 
     def create_tile_map(self, tile_map):
-        self.tile_map = tile_map
+        self.tile_map = tile_map.copy()
         self.tile_objects = []
         for y in range(self.tile_map.height):
             row = []
@@ -54,7 +54,7 @@ class TileMapGUI(object):
         default_color = self.tile_colors[None]
         for y in range(self.tile_map.height):
             for x in range(self.tile_map.width):
-                value = self.tile_map[y][x]
+                value = self.tile_map[x,y]
                 tile = self.tile_objects[y][x]
                 color = self.tile_colors.get(value, default_color)
                 self.canvas.itemconfig(tile, fill=color)

@@ -32,7 +32,7 @@ random.seed(seed)
 def generate_rooms(tile_map):
     # Recursively partition the tile map
     final_rooms = []
-    current_rooms = [TileMapView(tile_map, 0, 0, tile_map.width, tile_map.height)]
+    current_rooms = [tile_map.subview()]
     def room_needs_split(room):
         return (room.width > ROOM_MAXIMUM_WIDTH or room.height > ROOM_MAXIMUM_HEIGHT)
     while current_rooms:
@@ -70,14 +70,14 @@ def generate_floor_and_ceiling(room):
         ceiling_height = random.randrange(CEILING_MINIMUM, ceiling_max + 1)
         if room.height - ceiling_height - floor_height >= FLOOR_TO_CEILING_MINIMUM:
             break
+    room[:,(room.height - floor_height):] = TILE_FLOOR
+    room[:,:ceiling_height] = TILE_CEILING
     room.floor_height = floor_height
     room.ceiling_height = ceiling_height
-    room.subview(0, room.height - room.floor_height, room.width, room.floor_height).fill(TILE_FLOOR)
-    room.subview(0, 0, room.width, room.ceiling_height).fill(TILE_CEILING)
 
 def main():
     tile_size = 32
-    tile_map = TileMap(TILE_MAP_WIDTH, TILE_MAP_HEIGHT)
+    tile_map = TileMap(width=TILE_MAP_WIDTH, height=TILE_MAP_HEIGHT)
     rooms = generate_rooms(tile_map)
     for room in rooms:
         generate_floor_and_ceiling(room)
@@ -92,61 +92,101 @@ def main():
     gui = TileMapGUI(tile_map, tile_size, tile_colors, rooms=rooms)
     gui.run()
 
-class TileMap(object):
+class TileMapStorage(object):
     def __init__(self, width, height):
         self.width = width
         self.height = height
-        self._tiles = []
+        self.tiles = []
         for y in range(self.height):
-            self._tiles.append([0] * self.width)
+            self.tiles.append([0] * self.width)
 
-    def __getitem__(self, index):
-        return TileMapRowView(self, 0, index, self.width)
+    def copy(self):
+        storage = self.__class__(width=self.width, height=self.height)
+        storage.tiles = []
+        for y in range(self.height):
+            storage.tiles.append(list(self.tiles[y]))
+        return storage
 
-class TileMapRowView(object):
-    def __init__(self, tile_map, x, y, width):
+class TileMap(object):
+    """Subscriptable, editable view onto a TileMap."""
+
+    def __init__(self, x=0, y=0, width=0, height=0, storage=None):
         assert x >= 0
         assert y >= 0
-        assert (x + width) <= tile_map.width
-        self.tile_map = tile_map
-        self.x = x
-        self.y = y
-        self.width = width
-
-    def __getitem__(self, x):
-        if x >= 0 and x < self.width:
-            return self.tile_map._tiles[self.y][self.x + x]
-        else:
-            raise IndexError(x)
-
-    def __setitem__(self, x, value):
-        if x >= 0 and x < self.width:
-            self.tile_map._tiles[self.y][self.x + x] = value
-        else:
-            raise IndexError(x)
-
-class TileMapView(object):
-    def __init__(self, tile_map, x, y, width, height):
-        assert x >= 0
-        assert y >= 0
-        assert (x + width) <= tile_map.width
-        assert (y + height) <= tile_map.height
-        self.tile_map = tile_map
+        if storage:
+            assert (x + width) <= storage.width
+            assert (y + height) <= storage.height
+        self.storage = storage or TileMapStorage(width, height)
         self.x = x
         self.y = y
         self.width = width
         self.height = height
 
-    def __getitem__(self, y):
-        if y >= 0 and y < self.height:
-            return TileMapRowView(self.tile_map, self.x, self.y + y, self.width)
+    def _parse_subscript(self, subscript):
+        assert isinstance(subscript, tuple)
+        assert len(subscript) == 2
+
+        x, y = subscript
+        width, height = (1, 1)
+
+        if isinstance(x, slice):
+            start, stop, step = x.start, x.stop, x.step
+            if start is None: start = 0
+            if stop is None: stop = self.width
+            if step is None: step = 1
+            assert step == 1
+            width = stop - start
+            x = start
+
+        if isinstance(y, slice):
+            start, stop, step = y.start, y.stop, y.step
+            if start is None: start = 0
+            if stop is None: stop = self.height
+            if step is None: step = 1
+            assert step == 1
+            height = stop - start
+            y = start
+
+        if x < 0 or x + width > self.width or \
+            y < 0 or y + height > self.height:
+            raise IndexError(subscript)
+
+        return (x, y, width, height)
+
+    def __getitem__(self, subscript):
+        """Return the value at (x, y), or a subview of the range (if either x or y is a slice)."""
+        x, y, width, height = self._parse_subscript(subscript)
+        if width == 1 and height == 1:
+            return self.storage.tiles[self.y + y][self.x + x]
         else:
-            raise IndexError(y)
+            return self.subview(x, y, width, height)
+
+    def __setitem__(self, subscript, value):
+        """Set the value at (x, y), or fill the range (if either x or y is a slice) with the value."""
+        x, y, width, height = self._parse_subscript(subscript)
+        if isinstance(value, TileMap):
+            for j in range(height):
+                for i in range(width):
+                    if j < value.height and i < value.width:
+                        other_value = value.storage.tiles[value.y + j][value.x + i]
+                    else:
+                        other_value = 0
+                    self.storage.tiles[self.y + j][self.x + i] = other_value
+        else:
+            if width == 1 and height == 1:
+                self.storage.tiles[self.y + y][self.x + x] = value
+            else:
+                self.subview(x, y, width, height).fill(value)
+
+    def copy(self):
+        subview = self.subview()
+        subview.storage = self.storage.copy()
+        return subview
 
     def fill(self, value):
         for y in range(self.y, self.y + self.height):
             for x in range(self.x, self.x + self.width):
-                self.tile_map._tiles[y][x] = value
+                self.storage.tiles[y][x] = value
 
     def subview(self, x=None, y=None, width=None, height=None):
         """Return a subview at the given location (default top left) and size (default maximum)."""
@@ -154,9 +194,10 @@ class TileMapView(object):
         if y is None: y = 0
         if width is None: width = self.width 
         if height is None: height = self.height
-        return self.__class__(tile_map=self.tile_map,
+        return self.__class__(
             x=(self.x + x), y=(self.y + y),
-            width=width, height=height)
+            width=width, height=height,
+            storage=self.storage)
 
     def split_x(self, x):
         """Return a pair of views that are the halves of the tile map split vertically at `x`."""
