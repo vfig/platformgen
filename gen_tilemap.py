@@ -22,7 +22,7 @@ def main():
     current_rooms = [tile_map.view()]
     def room_needs_split(room):
         return (room.width > ROOM_MAXIMUM_WIDTH or room.height > ROOM_MAXIMUM_HEIGHT)
-    while any(room_needs_split(room) for room in current_rooms):
+    while current_rooms:
         new_rooms = []
         for room in current_rooms:
             if not room_needs_split(room):
