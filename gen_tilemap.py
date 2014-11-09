@@ -2,6 +2,7 @@
 import random, time
 from color import ColorGenerator
 from gui import TileMapGUI
+from util import contains_subsequence
 
 # Generation parameters
 TILE_MAP_WIDTH = 192
@@ -19,10 +20,16 @@ CEILING_MINIMUM = 1
 CEILING_MAXIMUM = 2
 FLOOR_TO_CEILING_MINIMUM = 4
 
+WALL_CHANCE = 0.15
+WALL_MINIMUM = 1
+WALL_MAXIMUM = 2
+WALL_MINIMUM_DOORWAY = 3
+
 # Tile types
 TILE_EMPTY = 0
 TILE_FLOOR = 1
 TILE_CEILING = 2
+TILE_WALL = 3
 
 # seed = int(time.time())
 seed = 1415535932
@@ -75,17 +82,82 @@ def generate_floor_and_ceiling(room):
     room.floor_height = floor_height
     room.ceiling_height = ceiling_height
 
+def generate_random_walls(room):
+    """Decide whether to place walls."""
+    wall = (random.random() < WALL_CHANCE)
+    left_hand = (random.random() < 0.5)
+
+    # Determine wall size
+    left_wall_width = getattr(room, 'left_wall_width', 0)
+    right_wall_width = getattr(room, 'right_wall_width', 0)
+    other_wall_width = (right_wall_width if left_hand else left_wall_width)
+    max_width = min(room.width - WALL_MINIMUM - other_wall_width, WALL_MAXIMUM)
+    wall_width = random.randrange(WALL_MINIMUM, max_width)
+
+    # Create the wall (if there isn't one already)
+    if wall:
+        if left_hand and left_wall_width == 0:
+            room[:wall_width,:] = TILE_WALL
+            room.left_wall_width = wall_width
+        elif not left_hand and right_wall_width == 0:
+            room[room.width - wall_width:,:] = TILE_WALL
+            room.right_wall_width = wall_width
+
+def generate_required_walls(room, left_hand=False):
+    """Place required walls."""
+    wall = False
+
+    # Determine wall size
+    left_wall_width = getattr(room, 'left_wall_width', 0)
+    right_wall_width = getattr(room, 'right_wall_width', 0)
+    other_wall_width = (right_wall_width if left_hand else left_wall_width)
+    max_width = min(room.width - WALL_MINIMUM - other_wall_width, WALL_MAXIMUM)
+    wall_width = random.randrange(WALL_MINIMUM, max_width)
+
+    # Check if a wall should be forced
+    edge = (0 if left_hand else room.width - 1)
+    direction = (-1 if left_hand else +1)
+    storage_edge = (0 if left_hand else room.storage.width - 1)
+    if (room.x + edge) == storage_edge:
+        # Always have a wall at the edge
+        wall = True
+    else:
+        # Always have a wall if not enough space for a doorway
+        inside_slice = room.subview(edge, 0, 1, room.height).linearize()
+        outside_slice = room.subview(edge + direction, 0, 1, room.height).linearize()
+        slices = zip(inside_slice, outside_slice)
+        gap = [(0, 0)] * WALL_MINIMUM_DOORWAY
+        if not contains_subsequence(slices, gap):
+            wall = True
+
+    # Create the wall (if there isn't one already)
+    if wall:
+        if left_hand and left_wall_width == 0:
+            room[:wall_width,:] = TILE_WALL
+            room.left_wall_width = wall_width
+        elif not left_hand and right_wall_width == 0:
+            room[room.width - wall_width:,:] = TILE_WALL
+            room.right_wall_width = wall_width
+
+
+
 def main():
     tile_size = 32
     tile_map = TileMap(width=TILE_MAP_WIDTH, height=TILE_MAP_HEIGHT)
     rooms = generate_rooms(tile_map)
     for room in rooms:
         generate_floor_and_ceiling(room)
+    for room in rooms:
+        generate_random_walls(room)
+    for room in rooms:
+        generate_required_walls(room, left_hand=True)
+        generate_required_walls(room, left_hand=False)
 
     tile_colors = {
         TILE_EMPTY: '#000000',
         TILE_FLOOR: '#666699',
         TILE_CEILING: '#663333',
+        TILE_WALL: '#666633',
         None: '',
         }
 
@@ -198,6 +270,14 @@ class TileMap(object):
             x=(self.x + x), y=(self.y + y),
             width=width, height=height,
             storage=self.storage)
+
+    def linearize(self):
+        """Return a linear sequence of all values in this tile map."""
+        values = []
+        for y in range(self.y, self.y + self.height):
+            for x in range(self.x, self.x + self.width):
+                values.append(self.storage.tiles[y][x])
+        return values
 
     def split_x(self, x):
         """Return a pair of views that are the halves of the tile map split vertically at `x`."""

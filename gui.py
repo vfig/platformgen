@@ -63,7 +63,7 @@ class TileMapGUI(object):
         self.rooms = list(rooms)
         self.room_objects = []
         colors = ColorGenerator()
-        outline_width = 3
+        outline_width = 1
         for room, color in izip(self.rooms, colors):
             rect = self.canvas.create_rectangle(
                 room.x * self.tile_size_x,
