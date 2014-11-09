@@ -40,6 +40,32 @@ seed = 1415535932
 print "random seed:", seed
 random.seed(seed)
 
+def main():
+    tile_size = 32
+    tile_map = TileMap(width=TILE_MAP_WIDTH, height=TILE_MAP_HEIGHT)
+    rooms = generate_rooms(tile_map)
+    for room in rooms:
+        generate_filled_room(room)
+    for room in rooms:
+        generate_floor_and_ceiling(room)
+    for room in rooms:
+        generate_random_walls(room)
+    for room in rooms:
+        generate_required_walls(room, left_hand=True)
+        generate_required_walls(room, left_hand=False)
+
+    tile_colors = {
+        TILE_EMPTY: '#000000',
+        TILE_FLOOR: '#666699',
+        TILE_CEILING: '#663333',
+        TILE_WALL: '#666633',
+        None: '',
+        }
+
+    gui = TileMapGUI(tile_map, tile_size, tile_colors, rooms=rooms)
+    gui.run()
+
+
 def generate_rooms(tile_map):
     # Recursively partition the tile map
     final_rooms = []
@@ -71,6 +97,7 @@ def generate_rooms(tile_map):
         current_rooms = new_rooms
     return final_rooms
 
+
 def generate_filled_room(room):
     if room.width > FILLED_MAXIMUM_WIDTH or room.height > FILLED_MAXIMUM_HEIGHT:
         return
@@ -79,6 +106,7 @@ def generate_filled_room(room):
         return
     room[:,:] = TILE_WALL
     room.filled = True
+
 
 def generate_floor_and_ceiling(room):
     """Find a random height for the floor that still allows the minimum walkable space."""
@@ -97,6 +125,7 @@ def generate_floor_and_ceiling(room):
     room[:,:ceiling_height] = TILE_CEILING
     room.floor_height = floor_height
     room.ceiling_height = ceiling_height
+
 
 def generate_random_walls(room):
     """Decide whether to place walls."""
@@ -119,6 +148,7 @@ def generate_random_walls(room):
         elif not left_hand and room.right_wall_width == 0:
             room[room.width - wall_width:,:] = TILE_WALL
             room.right_wall_width = wall_width
+
 
 def generate_required_walls(room, left_hand=False):
     """Place required walls."""
@@ -157,32 +187,6 @@ def generate_required_walls(room, left_hand=False):
             room[room.width - wall_width:,:] = TILE_WALL
             room.right_wall_width = wall_width
 
-
-
-def main():
-    tile_size = 32
-    tile_map = TileMap(width=TILE_MAP_WIDTH, height=TILE_MAP_HEIGHT)
-    rooms = generate_rooms(tile_map)
-    for room in rooms:
-        generate_filled_room(room)
-    for room in rooms:
-        generate_floor_and_ceiling(room)
-    for room in rooms:
-        generate_random_walls(room)
-    for room in rooms:
-        generate_required_walls(room, left_hand=True)
-        generate_required_walls(room, left_hand=False)
-
-    tile_colors = {
-        TILE_EMPTY: '#000000',
-        TILE_FLOOR: '#666699',
-        TILE_CEILING: '#663333',
-        TILE_WALL: '#666633',
-        None: '',
-        }
-
-    gui = TileMapGUI(tile_map, tile_size, tile_colors, rooms=rooms)
-    gui.run()
 
 class TileMapStorage(object):
     def __init__(self, width, height):
