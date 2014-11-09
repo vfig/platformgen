@@ -49,16 +49,16 @@ def generate_rooms(tile_map):
                 final_rooms.append(room)
             else:
                 split_x = (random.random() < ROOM_SPLIT_X_CHANCE)
-                if not split_x and room.height > 2 * ROOM_MINIMUM_HEIGHT:
+                if not split_x and room.height >= 2 * ROOM_MINIMUM_HEIGHT:
                     # Split into top and bottom halves
                     split_start = ROOM_MINIMUM_HEIGHT
-                    split_end = room.height - ROOM_MINIMUM_HEIGHT
+                    split_end = room.height - ROOM_MINIMUM_HEIGHT + 1
                     y = random.randrange(split_start, split_end)
                     new_rooms += list(room.split_y(y))
-                elif split_x and room.width > 2 * ROOM_MINIMUM_WIDTH:
+                elif split_x and room.width >= 2 * ROOM_MINIMUM_WIDTH:
                     # Split into left and right halves
                     split_start = ROOM_MINIMUM_WIDTH
-                    split_end = room.width - ROOM_MINIMUM_WIDTH
+                    split_end = room.width - ROOM_MINIMUM_WIDTH + 1
                     x = random.randrange(split_start, split_end)
                     new_rooms += list(room.split_x(x))
                 else:
