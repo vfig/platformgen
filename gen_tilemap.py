@@ -14,6 +14,10 @@ ROOM_MAXIMUM_HEIGHT = 16
 ROOM_MINIMUM_WIDTH = 8
 ROOM_MAXIMUM_WIDTH = 20
 
+FILLED_CHANCE = 0.25
+FILLED_MAXIMUM_WIDTH = ROOM_MINIMUM_WIDTH + 2
+FILLED_MAXIMUM_HEIGHT = ROOM_MINIMUM_HEIGHT
+
 FLOOR_MINIMUM = 1
 FLOOR_MAXIMUM = 5
 CEILING_MINIMUM = 1
@@ -67,8 +71,20 @@ def generate_rooms(tile_map):
         current_rooms = new_rooms
     return final_rooms
 
+def generate_filled_room(room):
+    if room.width > FILLED_MAXIMUM_WIDTH or room.height > FILLED_MAXIMUM_HEIGHT:
+        return
+    fill = (random.random() < FILLED_CHANCE)
+    if not fill:
+        return
+    room[:,:] = TILE_WALL
+    room.filled = True
+
 def generate_floor_and_ceiling(room):
     """Find a random height for the floor that still allows the minimum walkable space."""
+    if room.filled:
+        return
+
     floor_max = min(room.height - CEILING_MINIMUM - FLOOR_TO_CEILING_MINIMUM, FLOOR_MAXIMUM)
     ceiling_max = min(room.height - FLOOR_MINIMUM - FLOOR_TO_CEILING_MINIMUM, CEILING_MAXIMUM)
 
@@ -84,6 +100,9 @@ def generate_floor_and_ceiling(room):
 
 def generate_random_walls(room):
     """Decide whether to place walls."""
+    if room.filled:
+        return
+
     wall = (random.random() < WALL_CHANCE)
     left_hand = (random.random() < 0.5)
 
@@ -103,6 +122,9 @@ def generate_random_walls(room):
 
 def generate_required_walls(room, left_hand=False):
     """Place required walls."""
+    if room.filled:
+        return
+
     wall = False
 
     # Determine wall size
@@ -141,6 +163,8 @@ def main():
     tile_size = 32
     tile_map = TileMap(width=TILE_MAP_WIDTH, height=TILE_MAP_HEIGHT)
     rooms = generate_rooms(tile_map)
+    for room in rooms:
+        generate_filled_room(room)
     for room in rooms:
         generate_floor_and_ceiling(room)
     for room in rooms:
