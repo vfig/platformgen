@@ -1,22 +1,23 @@
 #!/usr/local/bin/python
-import colorsys, random, time
+import random, time
 from gui import TileMapGUI
 
-ROOM_SPLIT_X_CHANCE = 0.25
-ROOM_MINIMUM_HEIGHT = 4
-ROOM_MAXIMUM_HEIGHT = 12
-ROOM_MINIMUM_WIDTH = 6
+# Generation parameters
+ROOM_SPLIT_X_CHANCE = 0.5
+ROOM_MINIMUM_HEIGHT = 6
+ROOM_MAXIMUM_HEIGHT = 16
+ROOM_MINIMUM_WIDTH = 8
 ROOM_MAXIMUM_WIDTH = 20
+
+# Tile types
+TILE_EMPTY = 0
 
 # seed = int(time.time())
 seed = 1415535932
 print "random seed:", seed
 random.seed(seed)
 
-def main():
-    tile_size = 16
-    tile_map = TileMap(256, 128)
-
+def create_rooms(tile_map):
     # Recursively partition the tile map
     final_rooms = []
     current_rooms = [tile_map.view()]
@@ -45,35 +46,26 @@ def main():
                     # Don't split this time
                     new_rooms.append(room)
         current_rooms = new_rooms
+    return final_rooms
 
-    # Fill in the views
-    for i, room in enumerate(final_rooms, start=1):
-        room.fill(i)
+def main():
+    tile_size = 16
+    tile_map = TileMap(256, 128)
+    rooms = create_rooms(tile_map)
 
-    # Generate colors
-    existing_colors = set()
-    def random_color():
-        h = random.random()
-        s = 0.75 + random.random() * 0.25
-        v = 0.5 + random.random() * 0.5
-        (r, g, b) = colorsys.hsv_to_rgb(h, s, v)
-        r = int(r * 255)
-        g = int(g * 255)
-        b = int(b * 255)
-        return '#%02x%02x%02x' % (r, g, b)
-    def new_color():
-        color = random_color()
-        while color in existing_colors:
-            color = random_color()
-        return color
+    # # Fill in the views
+    # for i, room in enumerate(rooms, start=1):
+    #     room.fill(i)
+
     tile_colors = {
-        0: '',
+        TILE_EMPTY: '#000000',
         None: '',
         }
-    for i, room in enumerate(final_rooms, start=1):
-        tile_colors[i] = new_color()
+    # colors = ColorGenerator()
+    # for i, room in enumerate(rooms, start=1):
+    #     tile_colors[i] = next(colors)
 
-    gui = TileMapGUI(tile_map, tile_size, tile_colors)
+    gui = TileMapGUI(tile_map, tile_size, tile_colors, rooms=rooms)
     gui.run()
 
 

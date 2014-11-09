@@ -1,8 +1,10 @@
 #!/usr/local/bin/python
 import Tkinter
+from color import ColorGenerator
+from itertools import izip
 
 class TileMapGUI(object):
-    def __init__(self, tile_map, tile_size, tile_colors, tk=None):
+    def __init__(self, tile_map, tile_size, tile_colors, rooms=None, tk=None):
         self.tk = tk or root_tk
         self.tk.title("Tile map")
         self.tile_size_x = tile_size
@@ -20,12 +22,14 @@ class TileMapGUI(object):
             xscrollincrement=5,
             yscrollincrement=5)
         self.canvas.pack()
-        self.create_grid(self.tile_size_x // 2, self.tile_size_y // 2)
         self.canvas.bind('<Button-1>', self.click)
         self.canvas.bind('<B1-Motion>', self.drag)
         self.canvas.bind('<MouseWheel>', self.scroll)
         self.canvas.bind('<KeyPress>', self.keypress)
+        self.create_grid(self.tile_size_x, self.tile_size_y)
         self.create_tile_map(tile_map)
+        if rooms:
+            self.create_rooms(rooms)
         self.canvas.focus_set()
 
     def create_tile_map(self, tile_map):
@@ -54,6 +58,23 @@ class TileMapGUI(object):
                 tile = self.tile_objects[y][x]
                 color = self.tile_colors.get(value, default_color)
                 self.canvas.itemconfig(tile, fill=color)
+
+    def create_rooms(self, rooms):
+        self.rooms = list(rooms)
+        self.room_objects = []
+        colors = ColorGenerator()
+        outline_width = 3
+        for room, color in izip(self.rooms, colors):
+            rect = self.canvas.create_rectangle(
+                room.x * self.tile_size_x,
+                room.y * self.tile_size_y,
+                (room.x + room.width) * self.tile_size_x - outline_width,
+                (room.y + room.height) * self.tile_size_y - outline_width,
+                fill='',
+                outline=color,
+                width=outline_width,
+                tags='room')
+            self.room_objects.append(rect)
 
     def create_grid(self, grid_size_x, grid_size_y):
         grid_coords = []
