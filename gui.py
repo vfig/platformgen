@@ -10,8 +10,8 @@ class TileMapGUI(object):
         self.tile_colors = dict(tile_colors)
         self.width = self.tile_size_x * tile_map.width
         self.height = self.tile_size_y * tile_map.height
-        self.view_width = 500        # tk.winfo_screenwidth()
-        self.view_height = 300       # tk.winfo_screenheight()
+        self.view_width = 800        # tk.winfo_screenwidth()
+        self.view_height = 600       # tk.winfo_screenheight()
         self.canvas = Tkinter.Canvas(self.tk,
             width=self.view_width,
             height=self.view_height,
