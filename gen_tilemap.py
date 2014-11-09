@@ -1,5 +1,6 @@
 #!/usr/local/bin/python
 import random, time
+from color import ColorGenerator
 from gui import TileMapGUI
 
 # Generation parameters
@@ -9,8 +10,16 @@ ROOM_MAXIMUM_HEIGHT = 16
 ROOM_MINIMUM_WIDTH = 8
 ROOM_MAXIMUM_WIDTH = 20
 
+FLOOR_MINIMUM = 1
+FLOOR_MAXIMUM = 5
+CEILING_MINIMUM = 1
+CEILING_MAXIMUM = 2
+FLOOR_TO_CEILING_MINIMUM = 4
+
 # Tile types
 TILE_EMPTY = 0
+TILE_FLOOR = 1
+TILE_CEILING = 2
 
 # seed = int(time.time())
 seed = 1415535932
@@ -48,33 +57,37 @@ def generate_rooms(tile_map):
         current_rooms = new_rooms
     return final_rooms
 
+def generate_floor_and_ceiling(room):
+    """Find a random height for the floor that still allows the minimum walkable space."""
+    floor_max = min(room.height - CEILING_MINIMUM - FLOOR_TO_CEILING_MINIMUM, FLOOR_MAXIMUM)
+    ceiling_max = min(room.height - FLOOR_MINIMUM - FLOOR_TO_CEILING_MINIMUM, CEILING_MAXIMUM)
+
+    while True:
+        floor_height = random.randrange(FLOOR_MINIMUM, floor_max + 1)
+        ceiling_height = random.randrange(CEILING_MINIMUM, ceiling_max + 1)
+        if room.height - ceiling_height - floor_height >= FLOOR_TO_CEILING_MINIMUM:
+            break
+    room.floor_height = floor_height
+    room.ceiling_height = ceiling_height
+    room.subview(0, room.height - room.floor_height, room.width, room.floor_height).fill(TILE_FLOOR)
+    room.subview(0, 0, room.width, room.ceiling_height).fill(TILE_CEILING)
+
 def main():
     tile_size = 16
     tile_map = TileMap(256, 128)
     rooms = generate_rooms(tile_map)
-
-    # # Fill in the views
-    # for i, room in enumerate(rooms, start=1):
-    #     room.fill(i)
+    for room in rooms:
+        generate_floor_and_ceiling(room)
 
     tile_colors = {
         TILE_EMPTY: '#000000',
+        TILE_FLOOR: '#666699',
+        TILE_CEILING: '#663333',
         None: '',
         }
-    # colors = ColorGenerator()
-    # for i, room in enumerate(rooms, start=1):
-    #     tile_colors[i] = next(colors)
 
     gui = TileMapGUI(tile_map, tile_size, tile_colors, rooms=rooms)
     gui.run()
-
-
-
-
-
-# choose a random direction : horizontal or vertical splitting
-# choose a random position (x for vertical, y for horizontal)
-# split the dungeon into two sub-dungeons
 
 class TileMap(object):
     def __init__(self, width, height):
