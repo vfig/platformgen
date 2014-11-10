@@ -29,11 +29,18 @@ WALL_MINIMUM = 1
 WALL_MAXIMUM = 2
 WALL_MINIMUM_DOORWAY = 3
 
+LADDER_DENSITY = 0.1
+LADDER_MINIMUM_HEIGHT = 2
+LADDER_MAXIMUM_HEIGHT = 15
+LADDER_HORIZONTAL_SPACE = 20
+LADDER_VERTICAL_SPACE = 0
+
 # Tile types
 TILE_EMPTY = 0
 TILE_FLOOR = 1
 TILE_CEILING = 2
 TILE_WALL = 3
+TILE_LADDER = 4
 SOLID_TILES = set([TILE_FLOOR, TILE_CEILING, TILE_WALL])
 
 # seed = int(time.time())
@@ -42,7 +49,7 @@ print "random seed:", seed
 random.seed(seed)
 
 def main():
-    tile_size = 32
+    tile_size = 8
     tile_map = TileMap(width=TILE_MAP_WIDTH, height=TILE_MAP_HEIGHT)
     rooms = generate_rooms(tile_map)
     for room in rooms:
@@ -54,12 +61,17 @@ def main():
     for room in rooms:
         generate_required_walls(room, left_hand=True)
         generate_required_walls(room, left_hand=False)
+    generate_random_ladders(tile_map)
+
+    # room_index = generate_room_index(rooms)
+    # calculate_reachability(rooms)
 
     tile_colors = {
         TILE_EMPTY: '#000000',
         TILE_FLOOR: '#666699',
         TILE_CEILING: '#663333',
         TILE_WALL: '#666633',
+        TILE_LADDER: '#ff0000',
         None: '',
         }
 
@@ -97,6 +109,15 @@ def generate_rooms(tile_map):
                     new_rooms.append(room)
         current_rooms = new_rooms
     return final_rooms
+
+
+def generate_room_index(rooms):
+    index = {}
+    for room in rooms:
+        for y in range(room.y, room.y + room.width):
+            for x in range(room.x, room.x + room.height):
+                index[(x, y)] = room
+    return index
 
 
 def generate_filled_room(room):
@@ -188,6 +209,99 @@ def generate_required_walls(room, left_hand=False):
             room.right_wall_width = wall_width
 
 
+def generate_random_ladders(tile_map):
+    """Place random ladders."""
+
+    def can_place_ladder(x, y):
+        """Return (ladder_start, ladder_end) if can place a ladder at (x, y), where
+        ladder_start and ladder end are both coordinate pairs of the actual ladder.
+
+        Searches for:
+            [empty empty empty]
+            [solid solid solid]+
+            [empty empty empty]{2,}
+            [solid solid solid]
+
+        Choose ladders randomly, ensuring they aren't chosen too close together.
+        """
+        ladder_start = (x + 1, y)
+        # Make sure there's enough space
+        if x >= tile_map.width - 3: return False
+        # First line must be empty
+        if y >= tile_map.height: return False
+        line = tile_map[x:x+3,y]; y += 1
+        if TILE_WALL in line or TILE_FLOOR in line or TILE_CEILING in line or TILE_LADDER in line:
+            return False
+        # Second line must be all solid
+        if y >= tile_map.height: return False
+        line = tile_map[x:x+3,y]; y += 1
+        if TILE_EMPTY in line or TILE_LADDER in line:
+            return False
+        # Subsequent lines must be all solid or all empty
+        solid_height = 1
+        empty_height = 0
+        solid = True
+        while solid:
+            if y >= tile_map.height: return False
+            line = tile_map[x:x+3,y]; y += 1
+            found_empty = found_solid = False
+            if TILE_EMPTY in line or TILE_LADDER in line:
+                found_empty = True
+            if TILE_WALL in line or TILE_FLOOR in line or TILE_CEILING in line or TILE_LADDER in line:
+                found_solid = True
+            if found_empty and not found_solid:
+                empty_height += 1
+                solid = False
+            elif found_solid and not found_empty:
+                solid_height += 1
+            else:
+                return False
+        # Then there must be at least LADDER_MINIMUM_HEIGHT clear lines before a solid floor
+        while not solid:
+            if y >= tile_map.height: return False
+            line = tile_map[x:x+3,y]; y += 1
+            found_empty = found_solid = False
+            if TILE_EMPTY in line or TILE_LADDER in line:
+                found_empty = True
+            if TILE_WALL in line or TILE_FLOOR in line or TILE_CEILING in line or TILE_LADDER in line:
+                found_solid = True
+            if found_empty and not found_solid:
+                empty_height += 1
+            elif found_solid and not found_empty:
+                solid = True
+            else:
+                return False
+        if empty_height < LADDER_MINIMUM_HEIGHT: return False
+        if empty_height + solid_height + 1 > LADDER_MAXIMUM_HEIGHT: return False
+        ladder_end = (ladder_start[0] + 1 , ladder_start[1] + solid_height + empty_height + 1)
+        return (ladder_start, ladder_end)
+
+    ladders = []
+    for y in range(tile_map.height):
+        for x in range(tile_map.width):
+            ladder = can_place_ladder(x, y)
+            if not ladder: continue
+            ladders.append(ladder)
+
+    ladder_count = int(round(float(len(ladders)) * LADDER_DENSITY))
+    #10th ladder and 1st ladder
+    while ladder_count and ladders:
+        # Find a ladder position and build it
+        ladder = random.choice(ladders)
+        ladder_start, ladder_end = ladder
+        tile_map[ladder_start:ladder_end] = TILE_LADDER
+        # Remove all overlapping ladder positions
+        def does_not_overlap(other_ladder):
+            overlaps = (ladder_start[0] - LADDER_HORIZONTAL_SPACE < other_ladder[1][0]
+                and ladder_end[0] + LADDER_HORIZONTAL_SPACE > other_ladder[0][0]
+                and ladder_start[1] - LADDER_VERTICAL_SPACE < other_ladder[1][1]
+                and ladder_end[1] + LADDER_VERTICAL_SPACE > other_ladder[0][1])
+            return not overlaps
+
+        ladders = filter(does_not_overlap, ladders)
+        ladder_count -= 1
+
+
 class TileMapStorage(object):
     def __init__(self, width, height):
         self.width = width
@@ -225,6 +339,15 @@ class TileMap(object):
             storage=tile_map.storage)
 
     def _parse_subscript(self, subscript):
+        if isinstance(subscript, slice):
+            assert isinstance(subscript.start, tuple)
+            assert len(subscript.start) == 2
+            assert isinstance(subscript.stop, tuple)
+            assert len(subscript.stop) == 2
+            subscript = (
+                slice(subscript.start[0], subscript.stop[0]),
+                slice(subscript.start[1], subscript.stop[1]),
+                )
         assert isinstance(subscript, tuple)
         assert len(subscript) == 2
 
@@ -262,8 +385,8 @@ class TileMap(object):
             line = []
             for x in range(self.x, self.x + self.width):
                 line.append('%3s' % repr(self.storage.tiles[y][x]))
-            lines.append(','.join(line))
-        return '\n   +'.join(lines)
+            lines.append(' '.join(line))
+        return '\n    '.join(lines)
 
     def __getitem__(self, subscript):
         """Return the value at (x, y), or a subview of the range (if either x or y is a slice)."""
