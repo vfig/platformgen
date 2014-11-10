@@ -2,7 +2,7 @@
 import random, time
 from color import ColorGenerator
 from gui import TileMapGUI
-from util import contains_subsequence
+from util import contains_subsequence, shortest_subsequence
 
 # Generation parameters
 TILE_MAP_WIDTH = 192
@@ -174,8 +174,8 @@ def generate_required_walls(room, left_hand=False):
         inside_slice = room.subview(edge, 0, 1, room.height).linearize()
         outside_slice = room.subview(edge + direction, 0, 1, room.height).linearize()
         slices = zip(inside_slice, outside_slice)
-        gap = [(0, 0)] * WALL_MINIMUM_DOORWAY
-        if not contains_subsequence(slices, gap):
+        smallest_gap = shortest_subsequence(slices, (0, 0))
+        if 0 < smallest_gap < WALL_MINIMUM_DOORWAY:
             wall = True
 
     # Create the wall (if there isn't one already)
