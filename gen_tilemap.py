@@ -34,6 +34,7 @@ TILE_EMPTY = 0
 TILE_FLOOR = 1
 TILE_CEILING = 2
 TILE_WALL = 3
+SOLID_TILES = set([TILE_FLOOR, TILE_CEILING, TILE_WALL])
 
 # seed = int(time.time())
 seed = 1415535932
@@ -104,13 +105,12 @@ def generate_filled_room(room):
     fill = (random.random() < FILLED_CHANCE)
     if not fill:
         return
-    room[:,:] = TILE_WALL
-    room.filled = True
+    room.fill(TILE_WALL)
 
 
 def generate_floor_and_ceiling(room):
     """Find a random height for the floor that still allows the minimum walkable space."""
-    if room.filled:
+    if room.is_filled():
         return
 
     floor_max = min(room.height - CEILING_MINIMUM - FLOOR_TO_CEILING_MINIMUM, FLOOR_MAXIMUM)
@@ -121,15 +121,15 @@ def generate_floor_and_ceiling(room):
         ceiling_height = random.randrange(CEILING_MINIMUM, ceiling_max + 1)
         if room.height - ceiling_height - floor_height >= FLOOR_TO_CEILING_MINIMUM:
             break
-    room[:,(room.height - floor_height):] = TILE_FLOOR
-    room[:,:ceiling_height] = TILE_CEILING
     room.floor_height = floor_height
     room.ceiling_height = ceiling_height
+    room.floor_subview().fill(TILE_FLOOR)
+    room.ceiling_subview().fill(TILE_CEILING)
 
 
 def generate_random_walls(room):
     """Decide whether to place walls."""
-    if room.filled:
+    if room.is_filled():
         return
 
     wall = (random.random() < WALL_CHANCE)
@@ -152,7 +152,7 @@ def generate_random_walls(room):
 
 def generate_required_walls(room, left_hand=False):
     """Place required walls."""
-    if room.filled:
+    if room.is_filled():
         return
 
     wall = False
@@ -250,10 +250,20 @@ class TileMap(object):
             y = start
 
         if x < 0 or x + width > self.width or \
-            y < 0 or y + height > self.height:
+            y < 0 or y + height > self.height or \
+            width == 0 or height == 0:
             raise IndexError(subscript)
 
         return (x, y, width, height)
+
+    def __str__(self):
+        lines = ['']
+        for y in range(self.y, self.y + self.height):
+            line = []
+            for x in range(self.x, self.x + self.width):
+                line.append('%3s' % repr(self.storage.tiles[y][x]))
+            lines.append(','.join(line))
+        return '\n   +'.join(lines)
 
     def __getitem__(self, subscript):
         """Return the value at (x, y), or a subview of the range (if either x or y is a slice)."""
@@ -279,6 +289,15 @@ class TileMap(object):
                 self.storage.tiles[self.y + y][self.x + x] = value
             else:
                 self.subview(x, y, width, height).fill(value)
+
+    def __contains__(self, value):
+        if isinstance(value, TileMap):
+            raise TypeError("__contains__ does not support TileMaps yet.")
+        for y in range(self.y, self.y + self.height):
+            for x in range(self.x, self.x + self.width):
+                if self.storage.tiles[y][x] == value:
+                    return True
+        return False
 
     def copy(self):
         subview = self.subview()
@@ -326,11 +345,23 @@ class TileMap(object):
 class Room(TileMap):
     def __init__(self, *args, **kwargs):
         super(Room, self).__init__(*args, **kwargs)
-        self.filled = False
         self.floor_height = 0
         self.ceiling_height = 0
         self.left_wall_width = 0
         self.right_wall_width = 0
+
+    def floor_subview(self):
+        return self[:,(self.height - self.floor_height):]
+
+    def ceiling_subview(self):
+        return self[:,:self.ceiling_height]
+
+    def is_filled(self):
+        for y in range(self.y, self.y + self.height):
+            for x in range(self.x, self.x + self.width):
+                if self.storage.tiles[y][x] not in SOLID_TILES:
+                    return False
+        return True
 
 if __name__ == '__main__':
     main()
