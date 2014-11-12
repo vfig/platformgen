@@ -1,6 +1,7 @@
 #!/usr/local/bin/python
-import random, time
+import collections, random, time
 from color import ColorGenerator
+from filters import is_tile, closest_to
 from gui import TileMapGUI
 from util import contains_subsequence, shortest_subsequence
 
@@ -62,6 +63,7 @@ def main():
         generate_required_walls(room, left_hand=True)
         generate_required_walls(room, left_hand=False)
     generate_random_ladders(tile_map)
+    reachability = calculate_reachability(tile_map, rooms)
 
     # room_index = generate_room_index(rooms)
     # calculate_reachability(rooms)
@@ -119,6 +121,17 @@ def generate_room_index(rooms):
                 index[(x, y)] = room
     return index
 
+def calculate_reachability(tile_map, rooms):
+    reachability = {}
+
+    # Find the top-left-most TILE_EMPTY just above a floor, use it as the seed
+    empty_coords = tile_map.find(is_tile(TILE_EMPTY))
+    start_coord = reduce(closest_to(0, 0), empty_coords)
+    # vslice = tile_map[
+
+
+    print "Top-lef-most TILE_EMPTY is at:", start_coord
+    return None
 
 def generate_filled_room(room):
     if room.width > FILLED_MAXIMUM_WIDTH or room.height > FILLED_MAXIMUM_HEIGHT:
@@ -301,7 +314,6 @@ def generate_random_ladders(tile_map):
         ladders = filter(does_not_overlap, ladders)
         ladder_count -= 1
 
-
 class TileMapStorage(object):
     def __init__(self, width, height):
         self.width = width
@@ -316,6 +328,8 @@ class TileMapStorage(object):
         for y in range(self.height):
             storage.tiles.append(list(self.tiles[y]))
         return storage
+
+Coord = collections.namedtuple('Coord', ['x', 'y'])
 
 class TileMap(object):
     """Subscriptable, editable view onto a TileMap."""
@@ -421,6 +435,24 @@ class TileMap(object):
                 if self.storage.tiles[y][x] == value:
                     return True
         return False
+
+    def get(self, subscript):
+        try:
+            return self[subscript]
+        except IndexError:
+            return None
+
+    def find(self, predicate):
+        """
+        Return an iterable of all `(x, y)` coordinates for which
+        `predicate(tile_map, x, y)` returns True.
+        """
+        for y in range(self.height):
+            for x in range(self.width):
+                tile = self.storage.tiles[self.y + y][self.x + x]
+                arg = Coord(x, y)
+                if predicate(self, *arg):
+                    yield arg
 
     def copy(self):
         subview = self.subview()
