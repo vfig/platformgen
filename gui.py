@@ -29,12 +29,12 @@ class TileMapGUI(object):
         self.canvas.bind('<B1-Motion>', self.drag)
         self.canvas.bind('<MouseWheel>', self.scroll)
         self.canvas.bind('<KeyPress>', self.keypress)
-        self.create_grid(self.tile_size_x, self.tile_size_y)
         self.create_tile_map(tile_map)
         if rooms:
             self.create_rooms(rooms)
         if walk_graph:
             self.create_walk_graph(walk_graph)
+        self.create_grid(self.tile_size_x, self.tile_size_y)
         self.canvas.focus_set()
 
     def create_tile_map(self, tile_map):
@@ -100,8 +100,6 @@ class TileMapGUI(object):
                 if not can_reach: continue
                 for other_coord in can_reach:
                     two_way = (coord in walk_graph.get(other_coord))
-                    if not two_way:
-                        print coord, walk_graph.get(other_coord)
                     if two_way:
                         self.canvas.create_line(*(tile_center(coord) + tile_center(other_coord)),
                             **two_way_line_options)
@@ -140,7 +138,7 @@ class TileMapGUI(object):
             grid_coords += [-1, -1]
         else:
             grid_coords += [self.width + 1, self.height + 1]
-        grid_options = dict(outline='', fill='#f8f8f8', tags='grid', state=Tkinter.DISABLED)
+        grid_options = dict(outline='#004400', fill='', tags='grid', state=Tkinter.DISABLED)
         self.canvas.create_polygon(*grid_coords, **grid_options)
         self.bring_to_front()
 

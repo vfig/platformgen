@@ -57,6 +57,13 @@ class Coord(namedtuple('Coord', ['x', 'y'])):
     def __mul__(self, scalar):
         return self.__class__(self[0] * scalar, self[1] * scalar)
 
+    def __neg__(self):
+        return self.__class__(-self[0], -self[1])
+
+Coord.X = Coord(1, 0)
+Coord.Y = Coord(0, 1)
+
+
 class TileMap(object):
     """Subscriptable, editable view onto a TileMap."""
 

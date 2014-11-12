@@ -46,6 +46,7 @@ TILE_FLOOR = 1
 TILE_CEILING = 2
 TILE_WALL = 3
 TILE_LADDER = 4
+TILE_STAIR = 5
 SOLID_TILES = set([TILE_FLOOR, TILE_CEILING, TILE_WALL])
 
 # seed = int(time.time())
@@ -66,6 +67,7 @@ def main():
     for room in rooms:
         generate_required_walls(room, left_hand=True)
         generate_required_walls(room, left_hand=False)
+    generate_floor_stairs(tile_map)
     generate_random_ladders(tile_map)
     walk_graph = calculate_walk_graph(tile_map)
 
@@ -74,10 +76,11 @@ def main():
 
     tile_colors = {
         TILE_EMPTY: '#000000',
-        TILE_FLOOR: '#666699',
+        TILE_FLOOR: '#333366',
         TILE_CEILING: '#663333',
-        TILE_WALL: '#666633',
-        TILE_LADDER: '#ff0000',
+        TILE_WALL: '#663366',
+        TILE_LADDER: '#ff6666',
+        TILE_STAIR: '#6666ff',
         None: '',
         }
 
@@ -143,10 +146,10 @@ def calculate_walk_graph(tile_map):
     coord_is_walkable = defaultdict(lambda: False)
     for coord in Coord.range((0, 0), (tile_map.width, tile_map.height)):
         """A coord is walkable if it is above a floor or on a ladder."""
-        up =  coord - (0, 1)
-        down = coord + (0, 1)
-        left = coord - (1, 0)
-        right = coord + Coord(1, 0)
+        up =  coord - Coord.Y
+        down = coord + Coord.Y
+        left = coord - Coord.X
+        right = coord + Coord.X
 
         down_is_floor = is_solid(down)
         down_is_ladder = is_ladder(down)
@@ -173,10 +176,10 @@ def calculate_walk_graph(tile_map):
         if coord in coord_reachability: continue
         reachable = coord_reachability[coord]
 
-        up =  coord - (0, 1)
-        down = coord + (0, 1)
-        left = coord - (1, 0)
-        right = coord + (1, 0)
+        up =  coord - Coord.Y
+        down = coord + Coord.Y
+        left = coord - Coord.X
+        right = coord + Coord.X
 
         # Can always work to neighbouring walkable coords
         if coord_is_walkable[up]:
@@ -296,6 +299,89 @@ def generate_required_walls(room, left_hand=False):
             room[room.width - wall_width:,:] = TILE_WALL
             room.right_wall_width = wall_width
 
+def generate_floor_stairs(tile_map):
+    """Place stairs to join uneven floor levels."""
+    def is_solid(coord):
+        return (tile_map.get(coord) in SOLID_TILES)
+    def is_empty(coord):
+        return (tile_map.get(coord) == TILE_EMPTY)
+    def is_empty_above(coord, height):
+        for y in range(1, height + 1):
+            if not is_empty(coord - (0, y)):
+                return False
+        return True
+    def to_floor(coord):
+        return tile_map.cast_until(coord, Coord(0, 1), is_tile(*SOLID_TILES))
+    def height_above_floor(coord):
+        return Coord.height(coord, to_floor(coord))
+    def wall_height(coord):
+        try:
+            bottom_coord = tile_map.cast_until(coord, Coord(0, 1), is_not(is_tile(*SOLID_TILES)))
+        except ValueError:
+            bottom_coord = Coord(coord.x, tile_map.height)
+        return Coord.height(coord, bottom_coord)
+    def get_stair_direction(coord):
+        left = coord - Coord.X
+        right = coord + Coord.X
+        if is_solid(left) and is_empty(right):
+            return Coord.X
+        elif is_empty(left) and is_solid(right):
+            return -Coord.X
+        else:
+            return None
+
+    def is_stair_location(tile_map, stair_coord):
+        """A stair location is one like:
+
+          - E E E - -     E: empty
+          - E E E E -     W: wall/floor
+          = W[s]E E -     s: stair location, initially empty
+          = W f s E -     f: backfill for stair, initially empty
+          = W W W W =     =/-: don't care
+
+        We should look for the corner..... (bracketed above) that
+        has the appropriate surrounding geometry.
+        """
+        if not is_empty(stair_coord): return False
+        if not is_empty_above(stair_coord, 2): return False
+        stair_direction = get_stair_direction(stair_coord)
+        if stair_direction is None: return False
+        wall_direction = -stair_direction
+        wall_coord = stair_coord + wall_direction
+
+        # Measure the space below the stair coordinate
+        stair_height = height_above_floor(stair_coord)
+        # Ensure there is standing room above the wall
+        if not is_empty_above(wall_coord, 2): return False
+        # Ensure there is wall all the way down
+        if wall_height(wall_coord) < stair_height: return False
+        # Then, moving diagonally down and right until hit floor:
+        height = stair_height
+        step_coord = stair_coord
+        while height > 1:
+            height -= 1
+            step_coord += (stair_direction + (0, 1))
+            # Ensure the spot is empty
+            if not is_empty(step_coord): return False
+            # Ensure there is standing room + 1 above
+            if not is_empty_above(step_coord, 3): return False
+            # Ensure there is space - n below before a floor
+            if height_above_floor(step_coord) != height: return False
+        end_floor_coord = step_coord + (stair_direction + (0, 1))
+        # Check the floor where the stair ends
+        if not is_solid(end_floor_coord): return False
+        if not is_empty_above(end_floor_coord, 3): return False
+        return True
+
+    stairs = []
+    for stair_coord in tile_map.find(is_stair_location):
+        stair_direction = get_stair_direction(stair_coord)
+        coord = stair_coord
+        while is_empty(coord):
+            floor_coord = to_floor(coord)
+            tile_map[coord:(floor_coord + Coord.X)] = TILE_FLOOR
+            tile_map[coord] = TILE_STAIR
+            coord += stair_direction + Coord.Y
 
 def generate_random_ladders(tile_map):
     """Place random ladders."""
