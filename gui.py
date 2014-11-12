@@ -2,9 +2,12 @@
 import Tkinter
 from color import ColorGenerator
 from itertools import izip
+from tilemap import *
+
+__all__ = ('TileMapGUI',)
 
 class TileMapGUI(object):
-    def __init__(self, tile_map, tile_size, tile_colors, rooms=None, tk=None):
+    def __init__(self, tile_map, tile_size, tile_colors, rooms=None, walk_graph=None, tk=None):
         self.tk = tk or root_tk
         self.tk.title("Tile map")
         self.tile_size_x = tile_size
@@ -30,6 +33,8 @@ class TileMapGUI(object):
         self.create_tile_map(tile_map)
         if rooms:
             self.create_rooms(rooms)
+        if walk_graph:
+            self.create_walk_graph(walk_graph)
         self.canvas.focus_set()
 
     def create_tile_map(self, tile_map):
@@ -62,9 +67,9 @@ class TileMapGUI(object):
     def create_rooms(self, rooms):
         self.rooms = list(rooms)
         self.room_objects = []
-        colors = ColorGenerator()
+        color = '#888888'
         outline_width = 1
-        for room, color in izip(self.rooms, colors):
+        for room in self.rooms:
             rect = self.canvas.create_rectangle(
                 room.tl.x * self.tile_size_x,
                 room.tl.y * self.tile_size_y,
@@ -75,6 +80,34 @@ class TileMapGUI(object):
                 width=outline_width,
                 tags='room')
             self.room_objects.append(rect)
+
+    def create_walk_graph(self, walk_graph):
+        self.walk_graph = walk_graph.copy()
+        two_way_line_options = dict(
+            fill='#00ff00',
+            width=2,
+            tags='walk_graph')
+        one_way_line_options = dict(
+            fill='#008800',
+            width=2,
+            tags='walk_graph')
+        def tile_center(coord):
+            return [(coord.x + 0.5) * self.tile_size_x, (coord.y + 0.5) * self.tile_size_x]
+        for y in range(self.tile_map.height):
+            for x in range(self.tile_map.width):
+                coord = Coord(x, y)
+                can_reach = walk_graph.get(coord)
+                if not can_reach: continue
+                for other_coord in can_reach:
+                    two_way = (coord in walk_graph.get(other_coord))
+                    if not two_way:
+                        print coord, walk_graph.get(other_coord)
+                    if two_way:
+                        self.canvas.create_line(*(tile_center(coord) + tile_center(other_coord)),
+                            **two_way_line_options)
+                    else:
+                        self.canvas.create_line(*(tile_center(coord) + tile_center(other_coord)),
+                            **one_way_line_options)
 
     def create_grid(self, grid_size_x, grid_size_y):
         grid_coords = []

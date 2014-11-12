@@ -1,9 +1,11 @@
 #!/usr/local/bin/python
-import collections, random, time
+import random, time
+from collections import defaultdict
 from color import ColorGenerator
-from filters import is_not, is_tile, closest_to
-from gui import TileMapGUI
-from util import contains_subsequence, shortest_subsequence
+from filters import *
+from gui import *
+from tilemap import *
+from util import *
 
 # Generation parameters
 TILE_MAP_WIDTH = 192
@@ -36,13 +38,15 @@ LADDER_MAXIMUM_HEIGHT = 15
 LADDER_HORIZONTAL_SPACE = 20
 LADDER_VERTICAL_SPACE = 0
 
+WALK_DROP_HEIGHT = 8
+
 # Tile types
 TILE_EMPTY = 0
 TILE_FLOOR = 1
 TILE_CEILING = 2
 TILE_WALL = 3
 TILE_LADDER = 4
-SOLID_TILES = [TILE_FLOOR, TILE_CEILING, TILE_WALL]
+SOLID_TILES = set([TILE_FLOOR, TILE_CEILING, TILE_WALL])
 
 # seed = int(time.time())
 seed = 1415535932
@@ -63,10 +67,10 @@ def main():
         generate_required_walls(room, left_hand=True)
         generate_required_walls(room, left_hand=False)
     generate_random_ladders(tile_map)
-    # reachability = calculate_reachability(tile_map, rooms)
+    walk_graph = calculate_walk_graph(tile_map)
 
     # room_index = generate_room_index(rooms)
-    # calculate_reachability(rooms)
+    # calculate_walkable(rooms)
 
     tile_colors = {
         TILE_EMPTY: '#000000',
@@ -77,7 +81,7 @@ def main():
         None: '',
         }
 
-    gui = TileMapGUI(tile_map, tile_size, tile_colors, rooms=rooms)
+    gui = TileMapGUI(tile_map, tile_size, tile_colors, rooms=rooms, walk_graph=walk_graph)
     gui.run()
 
 
@@ -120,20 +124,104 @@ def generate_room_index(rooms):
             index[coord] = room
     return index
 
-def calculate_reachability(tile_map, rooms):
-    reachable = {}
-    # searched = set()
-    to_search = []
 
-    # Find the top-left-most TILE_EMPTY just above a floor, use it as the seed
-    empty_coords = tile_map.find(is_tile(TILE_EMPTY))
-    start_coord = reduce(closest_to(0, 0), empty_coords)
-    # vslice = tile_map[
+def calculate_walk_graph(tile_map):
+    def is_solid(coord):
+        return (tile_map.get(coord) in SOLID_TILES)
+    def is_ladder(coord):
+        return (tile_map.get(coord) == TILE_LADDER)
+    def is_empty(coord):
+        return (tile_map.get(coord) == TILE_EMPTY)
 
+    def find_top_left_empty():
+        empty_coords = tile_map.find(is_tile(TILE_EMPTY))
+        return reduce(closest_to(0, 0), empty_coords)
+    def to_floor(coord):
+        floor_coord = tile_map.cast_until(coord, Coord(0, 1), is_tile(*SOLID_TILES))
+        return coord_add(floor_coord, Coord(0, -1))
 
+    # For each coord, store a boolean if it can be walked on
+    coord_is_walkable = defaultdict(lambda: False)
+    for coord in coord_range(Coord(0, 0), Coord(tile_map.width, tile_map.height)):
+        """A coord is walkable if it is above a floor or on a ladder."""
+        up =  coord_add(coord, Coord(0, -1))
+        down = coord_add(coord, Coord(0, 1))
+        left = coord_add(coord, Coord(-1, 0))
+        right = coord_add(coord, Coord(1, 0))
 
-    print "Top-lef-most TILE_EMPTY is at:", start_coord
-    return None
+        down_is_floor = is_solid(down)
+        down_is_ladder = is_ladder(down)
+        up_is_empty = is_empty(up)
+        up_is_ladder = is_ladder(up)
+        tile_is_empty = is_empty(coord)
+        tile_is_ladder = is_ladder(coord)
+        coord_is_walkable[coord] = (
+            (up_is_empty
+                and tile_is_empty
+                and down_is_floor)
+            or ((up_is_empty or up_is_ladder)
+                and tile_is_ladder
+                and (down_is_ladder or down_is_floor)))
+
+    # For each coord, store a list of the coords you can walk to
+    coord_reachability = defaultdict(list)
+    # Start at the top left, just above the floor
+    to_search = [to_floor(find_top_left_empty())]
+    while to_search:
+        coord = to_search.pop()
+        if not coord_is_walkable[coord]: continue
+        if coord in coord_reachability: continue
+        reachable = coord_reachability[coord]
+
+        up =  coord_add(coord, Coord(0, -1))
+        down = coord_add(coord, Coord(0, 1))
+        left = coord_add(coord, Coord(-1, 0))
+        right = coord_add(coord, Coord(1, 0))
+
+        # Can always work to neighbouring walkable coords
+        if coord_is_walkable[up]:
+            reachable.append(up)
+            to_search.append(up)
+        if coord_is_walkable[down]:
+            reachable.append(down)
+            to_search.append(down)
+        if coord_is_walkable[left]:
+            reachable.append(left)
+            to_search.append(left)
+        else:
+            # Check if we can drop off an edge here
+            if is_empty(left) and is_empty(coord_add(left, Coord(0, 1))):
+                drop_to_coord = to_floor(left)
+                if coord_sub(drop_to_coord, left).y < WALK_DROP_HEIGHT:
+                    reachable.append(drop_to_coord)
+                    to_search.append(drop_to_coord)
+        if coord_is_walkable[right]:
+            reachable.append(right)
+            to_search.append(right)
+        else:
+            # Check if we can drop off an edge here
+            if is_empty(right) and is_empty(coord_add(right, Coord(0, 1))):
+                drop_to_coord = to_floor(right)
+                if coord_sub(drop_to_coord, right).y < WALK_DROP_HEIGHT:
+                    reachable.append(drop_to_coord)
+                    to_search.append(drop_to_coord)
+
+        # if can_walk or True:
+        #     # Look for neighbouring coords
+        #     left_is_empty = is_empty(left)
+        #     right_is_empty = is_empty(right)
+        #     left_is_ladder = is_ladder(left)
+        #     right_is_ladder = is_ladder(right)
+        #     if left_is_empty or left_is_ladder:
+        #         to_search.append(left)
+        #     if right_is_empty or right_is_ladder:
+        #         to_search.append(right)
+        #     if up_is_ladder:
+        #         to_search.append(up)
+        #     if down_is_ladder:
+        #         to_search.append(down)
+
+    return coord_reachability
 
 def generate_filled_room(room):
     if room.width > FILLED_MAXIMUM_WIDTH or room.height > FILLED_MAXIMUM_HEIGHT:
@@ -316,235 +404,6 @@ def generate_random_ladders(tile_map):
         ladders = filter(does_not_overlap, ladders)
         ladder_count -= 1
 
-class TileMapStorage(object):
-    def __init__(self, width, height):
-        self.width = width
-        self.height = height
-        self.tiles = []
-        for y in range(self.height):
-            self.tiles.append([0] * self.width)
-
-    def __getitem__(self, subscript):
-        assert isinstance(subscript, Coord)
-        return self.tiles[subscript.y][subscript.x]
-
-    def __setitem__(self, subscript, value):
-        assert isinstance(subscript, Coord)
-        self.tiles[subscript.y][subscript.x] = value
-
-    def copy(self):
-        storage = self.__class__(width=self.width, height=self.height)
-        storage.tiles = []
-        for y in range(self.height):
-            storage.tiles.append(list(self.tiles[y]))
-        return storage
-
-Coord = collections.namedtuple('Coord', ['x', 'y'])
-
-def make_coord(tup):
-    return Coord(tup[0], tup[1])
-def coord_width(c1, c2):
-    return (c2.x - c1.x)
-def coord_height(c1, c2):
-    return (c2.y - c1.y)
-def coord_add(c1, c2):
-    return Coord(c1.x + c2.x, c1.y + c2.y)
-def coord_sub(c1, c2):
-    return Coord(c1.x - c2.x, c1.y - c2.y)
-def coord_range(c1, c2):
-    for y in range(c1.y, c2.y):
-        for x in range(c1.x, c2.x):
-            yield Coord(x, y)
-
-
-class TileMap(object):
-    """Subscriptable, editable view onto a TileMap."""
-
-    def __init__(self, tl=None, br=None, width=0, height=0, storage=None):
-        if tl is None:
-            tl = Coord(0, 0)
-        else:
-            tl = make_coord(tl)
-
-        if br is None:
-            br = Coord(tl.x + width, tl.y + height)
-        else:
-            br = make_coord(br)
-
-        if storage is None:
-            storage = TileMapStorage(width, height)
-
-        assert isinstance(storage, TileMapStorage)
-        assert tl.x >= 0
-        assert tl.y >= 0
-        assert tl.x < br.x
-        assert tl.y < br.y
-        assert br.x <= storage.width
-        assert br.y <= storage.height
-
-        self.storage = storage
-        self.tl = tl
-        self.br = br
-
-    @property
-    def width(self):
-        return coord_width(self.tl, self.br)
-
-    @property
-    def height(self):
-        return coord_height(self.tl, self.br)
-
-    @classmethod
-    def clone(cls, tile_map):
-        return cls(tl=tile_map.tl, br=tile_map.br, storage=tile_map.storage)
-
-    def _local_to_storage(self, coord):
-        return Coord(coord.x + self.tl.x, coord.y + self.tl.y)
-
-    def _storage_to_local(self, coord):
-        return Coord(coord.x - self.tl.x, coord.y - self.tl.y)
-
-    def _parse_subscript(self, subscript):
-        if isinstance(subscript, slice):
-            assert isinstance(subscript.start, tuple)
-            assert len(subscript.start) == 2
-            assert isinstance(subscript.stop, tuple)
-            assert len(subscript.stop) == 2
-            subscript = (
-                slice(subscript.start[0], subscript.stop[0]),
-                slice(subscript.start[1], subscript.stop[1]),
-                )
-        assert isinstance(subscript, tuple)
-        assert len(subscript) == 2
-
-        x, y = subscript
-        width, height = (1, 1)
-
-        if isinstance(x, slice):
-            start, stop, step = x.start, x.stop, x.step
-            if start is None: start = 0
-            if stop is None: stop = self.width
-            if step is None: step = 1
-            assert step == 1
-            width = stop - start
-            x = start
-
-        if isinstance(y, slice):
-            start, stop, step = y.start, y.stop, y.step
-            if start is None: start = 0
-            if stop is None: stop = self.height
-            if step is None: step = 1
-            assert step == 1
-            height = stop - start
-            y = start
-
-        if x < 0 or x + width > self.width or \
-            y < 0 or y + height > self.height or \
-            width == 0 or height == 0:
-            raise IndexError(subscript)
-
-        return Coord(x, y), Coord(x + width, y + height)
-
-    def __str__(self):
-        lines = ['']
-        for y in range(self.tl.y, self.br.y):
-            line = []
-            for x in range(self.tl.x, self.br.x):
-                line.append('%3s' % repr(self.storage[Coord(x, y)]))
-            lines.append(' '.join(line))
-        return '\n    '.join(lines)
-
-    def __getitem__(self, subscript):
-        """Return the value at (x, y), or a subview of the range (if either x or y is a slice)."""
-        tl, br = self._parse_subscript(subscript)
-        if coord_width(tl, br) == 1 and coord_height(tl, br) == 1:
-            tl = self._local_to_storage(tl)
-            return self.storage[tl]
-        else:
-            return self.subview(tl=tl, br=br)
-
-    def __setitem__(self, subscript, value):
-        """Set the value at (x, y), or fill the range (if either x or y is a slice) with the value."""
-        tl, br = self._parse_subscript(subscript)
-        if isinstance(value, TileMap):
-            for coord in coord_range(tl, br):
-                coord = self._local_to_storage(coord)
-                other_coord = Coord(coord.x - tl.x, coord.y - tl.y)
-                other_coord = value._local_to_storage(other_coord)
-                self.storage[coord] = value.storage[other_coord]
-        else:
-            if coord_width(tl, br) == 1 and coord_height(tl, br) == 1:
-                tl = self._local_to_storage(tl)
-                self.storage[tl] = value
-            else:
-                self.subview(tl=tl, br=br).fill(value)
-
-    def __contains__(self, value):
-        if isinstance(value, TileMap):
-            raise TypeError("__contains__ does not support TileMaps yet.")
-        for coord in self.find(is_tile(value)):
-            return True
-        return False
-
-    def get(self, subscript):
-        try:
-            return self[subscript]
-        except IndexError:
-            return None
-
-    def find(self, predicate):
-        """
-        Return an iterable of all `(x, y)` coordinates for which
-        `predicate(tile_map, x, y)` returns True.
-        """
-        for coord in coord_range(self.tl, self.br):
-            tile = self.storage[coord]
-            arg = self._storage_to_local(coord)
-            if predicate(self, *arg):
-                yield arg
-
-    def copy(self):
-        subview = self.subview()
-        subview.storage = self.storage.copy()
-        return subview
-
-    def fill(self, value):
-        for coord in coord_range(self.tl, self.br):
-            self.storage[coord] = value
-
-    def subview(self, tl=None, br=None):
-        """Return a subview at the given location (default top left) and size (default maximum)."""
-        if tl is None:
-            tl = Coord(0, 0)
-        else:
-            tl = make_coord(tl)
-        if br is None:
-            br = Coord(self.width, self.height)
-        else:
-            br = make_coord(br)
-        tl = self._local_to_storage(tl)
-        br = self._local_to_storage(br)
-        return self.__class__(tl=tl, br=br, storage=self.storage)
-
-    def linearize(self):
-        """Return a linear iterable of all values in this tile map."""
-        return (self.storage[coord] for coord in coord_range(self.tl, self.br))
-
-    def split_x(self, x):
-        """Return a pair of views that are the halves of the tile map split vertically at `x`."""
-        assert 0 <= x < self.width
-        return (
-            self.subview(tl=Coord(0, 0), br=Coord(x, self.height)),
-            self.subview(tl=Coord(x, 0), br=Coord(self.width, self.height))
-            )
-
-    def split_y(self, y):
-        """Return a pair of views that are the halves of the tile map split horizontally at `y`."""
-        assert 0 <= y < self.height
-        return (
-            self.subview(tl=Coord(0, 0), br=Coord(self.width, y)),
-            self.subview(tl=Coord(0, y), br=Coord(self.width, self.height))
-            )
 
 class Room(TileMap):
     def __init__(self, *args, **kwargs):

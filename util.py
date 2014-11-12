@@ -1,4 +1,4 @@
-__all__ = ('contains_subsequence,')
+__all__ = ('contains_subsequence', 'shortest_subsequence')
 
 def contains_subsequence(seq, subseq):
     for i in range(len(seq) - len(subseq)):

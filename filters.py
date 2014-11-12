@@ -10,8 +10,8 @@ def is_tile(*tiles):
     """Return a predicate function for `find()` that will
     find all coordinates containing one of `tiles`."""
     tiles = set(tiles)
-    def predicate(tile_map, x, y):
-        tile = tile_map[(x, y)]
+    def predicate(tile_map, coord):
+        tile = tile_map[coord]
         return (tile in tiles)
     return predicate
 
