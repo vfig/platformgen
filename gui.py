@@ -88,7 +88,7 @@ class TileMapGUI(object):
             width=2,
             tags='walk_graph')
         one_way_line_options = dict(
-            fill='#008800',
+            fill='#ff0000',
             width=2,
             tags='walk_graph')
         def tile_center(coord):
@@ -99,7 +99,7 @@ class TileMapGUI(object):
                 can_reach = walk_graph.get(coord)
                 if not can_reach: continue
                 for other_coord in can_reach:
-                    two_way = (coord in walk_graph.get(other_coord))
+                    two_way = (coord in walk_graph.get(other_coord, []))
                     if two_way:
                         self.canvas.create_line(*(tile_center(coord) + tile_center(other_coord)),
                             **two_way_line_options)

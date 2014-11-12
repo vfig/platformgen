@@ -47,7 +47,7 @@ TILE_CEILING = 2
 TILE_WALL = 3
 TILE_LADDER = 4
 TILE_STAIR = 5
-SOLID_TILES = set([TILE_FLOOR, TILE_CEILING, TILE_WALL])
+SOLID_TILES = set([TILE_FLOOR, TILE_CEILING, TILE_WALL, TILE_STAIR])
 
 # seed = int(time.time())
 seed = 1415535932
@@ -138,6 +138,8 @@ def calculate_walk_graph(tile_map):
         return (tile_map.get(coord) == TILE_LADDER)
     def is_empty(coord):
         return (tile_map.get(coord) == TILE_EMPTY)
+    def is_stair(coord):
+        return (tile_map.get(coord) == TILE_STAIR)
 
     def find_floor(coord):
         return tile_map.cast_until(coord, Coord(0, 1), is_tile(*SOLID_TILES))
@@ -145,7 +147,7 @@ def calculate_walk_graph(tile_map):
     # For each coord, store a boolean if it can be walked on
     coord_is_walkable = defaultdict(lambda: False)
     for coord in Coord.range((0, 0), (tile_map.width, tile_map.height)):
-        """A coord is walkable if it is above a floor or on a ladder."""
+        """A coord is walkable if it is above a floor/stair or on a ladder."""
         up =  coord - Coord.Y
         down = coord + Coord.Y
         left = coord - Coord.X
@@ -153,6 +155,7 @@ def calculate_walk_graph(tile_map):
 
         down_is_floor = is_solid(down)
         down_is_ladder = is_ladder(down)
+        down_is_stair = is_stair(down)
         up_is_empty = is_empty(up)
         up_is_ladder = is_ladder(up)
         tile_is_empty = is_empty(coord)
@@ -160,7 +163,7 @@ def calculate_walk_graph(tile_map):
         coord_is_walkable[coord] = (
             (up_is_empty
                 and tile_is_empty
-                and down_is_floor)
+                and (down_is_floor or down_is_stair))
             or ((up_is_empty or up_is_ladder)
                 and tile_is_ladder
                 and (down_is_ladder or down_is_floor)))
@@ -181,7 +184,7 @@ def calculate_walk_graph(tile_map):
         left = coord - Coord.X
         right = coord + Coord.X
 
-        # Can always work to neighbouring walkable coords
+        # Can always walk to neighbouring walkable coords
         if coord_is_walkable[up]:
             reachable.append(up)
             to_search.append(up)
@@ -191,6 +194,9 @@ def calculate_walk_graph(tile_map):
         if coord_is_walkable[left]:
             reachable.append(left)
             to_search.append(left)
+        elif (is_stair(left) and coord_is_walkable[left - Coord.Y]):
+            reachable.append(left - Coord.Y)
+            to_search.append(left - Coord.Y)
         else:
             # Check if we can drop off an edge here
             if is_empty(left) and is_empty(left + (0, 1)):
@@ -201,6 +207,9 @@ def calculate_walk_graph(tile_map):
         if coord_is_walkable[right]:
             reachable.append(right)
             to_search.append(right)
+        elif (is_stair(right) and coord_is_walkable[right - Coord.Y]):
+            reachable.append(right - Coord.Y)
+            to_search.append(right - Coord.Y)
         else:
             # Check if we can drop off an edge here
             if is_empty(right) and is_empty(right + (0, 1)):
@@ -301,8 +310,9 @@ def generate_required_walls(room, left_hand=False):
 
 def generate_floor_stairs(tile_map):
     """Place stairs to join uneven floor levels."""
+    SOLID_EXCEPT_STAIRS = SOLID_TILES - set([TILE_STAIR])
     def is_solid(coord):
-        return (tile_map.get(coord) in SOLID_TILES)
+        return (tile_map.get(coord) in SOLID_EXCEPT_STAIRS)
     def is_empty(coord):
         return (tile_map.get(coord) == TILE_EMPTY)
     def is_empty_above(coord, height):
@@ -311,12 +321,12 @@ def generate_floor_stairs(tile_map):
                 return False
         return True
     def to_floor(coord):
-        return tile_map.cast_until(coord, Coord(0, 1), is_tile(*SOLID_TILES))
+        return tile_map.cast_until(coord, Coord(0, 1), is_tile(*SOLID_EXCEPT_STAIRS))
     def height_above_floor(coord):
         return Coord.height(coord, to_floor(coord))
     def wall_height(coord):
         try:
-            bottom_coord = tile_map.cast_until(coord, Coord(0, 1), is_not(is_tile(*SOLID_TILES)))
+            bottom_coord = tile_map.cast_until(coord, Coord(0, 1), is_not(is_tile(*SOLID_EXCEPT_STAIRS)))
         except ValueError:
             bottom_coord = Coord(coord.x, tile_map.height)
         return Coord.height(coord, bottom_coord)
