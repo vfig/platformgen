@@ -1,7 +1,7 @@
 #!/usr/local/bin/python
 import collections, random, time
 from color import ColorGenerator
-from filters import is_tile, closest_to
+from filters import is_not, is_tile, closest_to
 from gui import TileMapGUI
 from util import contains_subsequence, shortest_subsequence
 
@@ -42,7 +42,7 @@ TILE_FLOOR = 1
 TILE_CEILING = 2
 TILE_WALL = 3
 TILE_LADDER = 4
-SOLID_TILES = set([TILE_FLOOR, TILE_CEILING, TILE_WALL])
+SOLID_TILES = [TILE_FLOOR, TILE_CEILING, TILE_WALL]
 
 # seed = int(time.time())
 seed = 1415535932
@@ -63,7 +63,7 @@ def main():
         generate_required_walls(room, left_hand=True)
         generate_required_walls(room, left_hand=False)
     generate_random_ladders(tile_map)
-    reachability = calculate_reachability(tile_map, rooms)
+    # reachability = calculate_reachability(tile_map, rooms)
 
     # room_index = generate_room_index(rooms)
     # calculate_reachability(rooms)
@@ -116,18 +116,20 @@ def generate_rooms(tile_map):
 def generate_room_index(rooms):
     index = {}
     for room in rooms:
-        for y in range(room.y, room.y + room.width):
-            for x in range(room.x, room.x + room.height):
-                index[(x, y)] = room
+        for coord in coord_range(room.tl, room.br):
+            index[coord] = room
     return index
 
 def calculate_reachability(tile_map, rooms):
-    reachability = {}
+    reachable = {}
+    # searched = set()
+    to_search = []
 
     # Find the top-left-most TILE_EMPTY just above a floor, use it as the seed
     empty_coords = tile_map.find(is_tile(TILE_EMPTY))
     start_coord = reduce(closest_to(0, 0), empty_coords)
     # vslice = tile_map[
+
 
 
     print "Top-lef-most TILE_EMPTY is at:", start_coord
@@ -200,13 +202,13 @@ def generate_required_walls(room, left_hand=False):
     edge = (0 if left_hand else room.width - 1)
     direction = (-1 if left_hand else +1)
     storage_edge = (0 if left_hand else room.storage.width - 1)
-    if (room.x + edge) == storage_edge:
+    if (room.tl.x + edge) == storage_edge:
         # Always have a wall at the edge
         wall = True
     else:
         # Always have a wall if not enough space for a doorway
-        inside_slice = room.subview(edge, 0, 1, room.height).linearize()
-        outside_slice = room.subview(edge + direction, 0, 1, room.height).linearize()
+        inside_slice = room.subview(tl=Coord(edge, 0), br=Coord(edge + 1, room.height)).linearize()
+        outside_slice = room.subview(tl=Coord(edge + direction, 0), br=Coord(edge + direction + 1, room.height)).linearize()
         slices = zip(inside_slice, outside_slice)
         smallest_gap = shortest_subsequence(slices, (0, 0))
         if 0 < smallest_gap < WALL_MINIMUM_DOORWAY:
@@ -322,6 +324,14 @@ class TileMapStorage(object):
         for y in range(self.height):
             self.tiles.append([0] * self.width)
 
+    def __getitem__(self, subscript):
+        assert isinstance(subscript, Coord)
+        return self.tiles[subscript.y][subscript.x]
+
+    def __setitem__(self, subscript, value):
+        assert isinstance(subscript, Coord)
+        self.tiles[subscript.y][subscript.x] = value
+
     def copy(self):
         storage = self.__class__(width=self.width, height=self.height)
         storage.tiles = []
@@ -331,26 +341,68 @@ class TileMapStorage(object):
 
 Coord = collections.namedtuple('Coord', ['x', 'y'])
 
+def make_coord(tup):
+    return Coord(tup[0], tup[1])
+def coord_width(c1, c2):
+    return (c2.x - c1.x)
+def coord_height(c1, c2):
+    return (c2.y - c1.y)
+def coord_add(c1, c2):
+    return Coord(c1.x + c2.x, c1.y + c2.y)
+def coord_sub(c1, c2):
+    return Coord(c1.x - c2.x, c1.y - c2.y)
+def coord_range(c1, c2):
+    for y in range(c1.y, c2.y):
+        for x in range(c1.x, c2.x):
+            yield Coord(x, y)
+
+
 class TileMap(object):
     """Subscriptable, editable view onto a TileMap."""
 
-    def __init__(self, x=0, y=0, width=0, height=0, storage=None):
-        assert x >= 0
-        assert y >= 0
-        if storage:
-            assert (x + width) <= storage.width
-            assert (y + height) <= storage.height
-        self.storage = storage or TileMapStorage(width, height)
-        self.x = x
-        self.y = y
-        self.width = width
-        self.height = height
+    def __init__(self, tl=None, br=None, width=0, height=0, storage=None):
+        if tl is None:
+            tl = Coord(0, 0)
+        else:
+            tl = make_coord(tl)
+
+        if br is None:
+            br = Coord(tl.x + width, tl.y + height)
+        else:
+            br = make_coord(br)
+
+        if storage is None:
+            storage = TileMapStorage(width, height)
+
+        assert isinstance(storage, TileMapStorage)
+        assert tl.x >= 0
+        assert tl.y >= 0
+        assert tl.x < br.x
+        assert tl.y < br.y
+        assert br.x <= storage.width
+        assert br.y <= storage.height
+
+        self.storage = storage
+        self.tl = tl
+        self.br = br
+
+    @property
+    def width(self):
+        return coord_width(self.tl, self.br)
+
+    @property
+    def height(self):
+        return coord_height(self.tl, self.br)
 
     @classmethod
     def clone(cls, tile_map):
-        return cls(x=tile_map.x, y=tile_map.y,
-            width=tile_map.width, height=tile_map.height,
-            storage=tile_map.storage)
+        return cls(tl=tile_map.tl, br=tile_map.br, storage=tile_map.storage)
+
+    def _local_to_storage(self, coord):
+        return Coord(coord.x + self.tl.x, coord.y + self.tl.y)
+
+    def _storage_to_local(self, coord):
+        return Coord(coord.x - self.tl.x, coord.y - self.tl.y)
 
     def _parse_subscript(self, subscript):
         if isinstance(subscript, slice):
@@ -391,49 +443,47 @@ class TileMap(object):
             width == 0 or height == 0:
             raise IndexError(subscript)
 
-        return (x, y, width, height)
+        return Coord(x, y), Coord(x + width, y + height)
 
     def __str__(self):
         lines = ['']
-        for y in range(self.y, self.y + self.height):
+        for y in range(self.tl.y, self.br.y):
             line = []
-            for x in range(self.x, self.x + self.width):
-                line.append('%3s' % repr(self.storage.tiles[y][x]))
+            for x in range(self.tl.x, self.br.x):
+                line.append('%3s' % repr(self.storage[Coord(x, y)]))
             lines.append(' '.join(line))
         return '\n    '.join(lines)
 
     def __getitem__(self, subscript):
         """Return the value at (x, y), or a subview of the range (if either x or y is a slice)."""
-        x, y, width, height = self._parse_subscript(subscript)
-        if width == 1 and height == 1:
-            return self.storage.tiles[self.y + y][self.x + x]
+        tl, br = self._parse_subscript(subscript)
+        if coord_width(tl, br) == 1 and coord_height(tl, br) == 1:
+            tl = self._local_to_storage(tl)
+            return self.storage[tl]
         else:
-            return self.subview(x, y, width, height)
+            return self.subview(tl=tl, br=br)
 
     def __setitem__(self, subscript, value):
         """Set the value at (x, y), or fill the range (if either x or y is a slice) with the value."""
-        x, y, width, height = self._parse_subscript(subscript)
+        tl, br = self._parse_subscript(subscript)
         if isinstance(value, TileMap):
-            for j in range(height):
-                for i in range(width):
-                    if j < value.height and i < value.width:
-                        other_value = value.storage.tiles[value.y + j][value.x + i]
-                    else:
-                        other_value = 0
-                    self.storage.tiles[self.y + j][self.x + i] = other_value
+            for coord in coord_range(tl, br):
+                coord = self._local_to_storage(coord)
+                other_coord = Coord(coord.x - tl.x, coord.y - tl.y)
+                other_coord = value._local_to_storage(other_coord)
+                self.storage[coord] = value.storage[other_coord]
         else:
-            if width == 1 and height == 1:
-                self.storage.tiles[self.y + y][self.x + x] = value
+            if coord_width(tl, br) == 1 and coord_height(tl, br) == 1:
+                tl = self._local_to_storage(tl)
+                self.storage[tl] = value
             else:
-                self.subview(x, y, width, height).fill(value)
+                self.subview(tl=tl, br=br).fill(value)
 
     def __contains__(self, value):
         if isinstance(value, TileMap):
             raise TypeError("__contains__ does not support TileMaps yet.")
-        for y in range(self.y, self.y + self.height):
-            for x in range(self.x, self.x + self.width):
-                if self.storage.tiles[y][x] == value:
-                    return True
+        for coord in self.find(is_tile(value)):
+            return True
         return False
 
     def get(self, subscript):
@@ -447,12 +497,11 @@ class TileMap(object):
         Return an iterable of all `(x, y)` coordinates for which
         `predicate(tile_map, x, y)` returns True.
         """
-        for y in range(self.height):
-            for x in range(self.width):
-                tile = self.storage.tiles[self.y + y][self.x + x]
-                arg = Coord(x, y)
-                if predicate(self, *arg):
-                    yield arg
+        for coord in coord_range(self.tl, self.br):
+            tile = self.storage[coord]
+            arg = self._storage_to_local(coord)
+            if predicate(self, *arg):
+                yield arg
 
     def copy(self):
         subview = self.subview()
@@ -460,41 +509,41 @@ class TileMap(object):
         return subview
 
     def fill(self, value):
-        for y in range(self.y, self.y + self.height):
-            for x in range(self.x, self.x + self.width):
-                self.storage.tiles[y][x] = value
+        for coord in coord_range(self.tl, self.br):
+            self.storage[coord] = value
 
-    def subview(self, x=None, y=None, width=None, height=None):
+    def subview(self, tl=None, br=None):
         """Return a subview at the given location (default top left) and size (default maximum)."""
-        if x is None: x = 0
-        if y is None: y = 0
-        if width is None: width = self.width 
-        if height is None: height = self.height
-        return self.__class__(
-            x=(self.x + x), y=(self.y + y),
-            width=width, height=height,
-            storage=self.storage)
+        if tl is None:
+            tl = Coord(0, 0)
+        else:
+            tl = make_coord(tl)
+        if br is None:
+            br = Coord(self.width, self.height)
+        else:
+            br = make_coord(br)
+        tl = self._local_to_storage(tl)
+        br = self._local_to_storage(br)
+        return self.__class__(tl=tl, br=br, storage=self.storage)
 
     def linearize(self):
-        """Return a linear sequence of all values in this tile map."""
-        values = []
-        for y in range(self.y, self.y + self.height):
-            for x in range(self.x, self.x + self.width):
-                values.append(self.storage.tiles[y][x])
-        return values
+        """Return a linear iterable of all values in this tile map."""
+        return (self.storage[coord] for coord in coord_range(self.tl, self.br))
 
     def split_x(self, x):
         """Return a pair of views that are the halves of the tile map split vertically at `x`."""
+        assert 0 <= x < self.width
         return (
-            self.subview(0, 0, x, self.height),
-            self.subview(x, 0, self.width - x, self.height)
+            self.subview(tl=Coord(0, 0), br=Coord(x, self.height)),
+            self.subview(tl=Coord(x, 0), br=Coord(self.width, self.height))
             )
 
     def split_y(self, y):
         """Return a pair of views that are the halves of the tile map split horizontally at `y`."""
+        assert 0 <= y < self.height
         return (
-            self.subview(0, 0, self.width, y),
-            self.subview(0, y, self.width, self.height - y)
+            self.subview(tl=Coord(0, 0), br=Coord(self.width, y)),
+            self.subview(tl=Coord(0, y), br=Coord(self.width, self.height))
             )
 
 class Room(TileMap):
@@ -512,10 +561,8 @@ class Room(TileMap):
         return self[:,:self.ceiling_height]
 
     def is_filled(self):
-        for y in range(self.y, self.y + self.height):
-            for x in range(self.x, self.x + self.width):
-                if self.storage.tiles[y][x] not in SOLID_TILES:
-                    return False
+        for coord in self.find(is_not(is_tile(*SOLID_TILES))):
+            return False
         return True
 
 if __name__ == '__main__':

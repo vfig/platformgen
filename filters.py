@@ -1,6 +1,11 @@
 
 ## Filtering ################################################################
 
+def is_not(predicate):
+    def not_predicate(*args):
+        return not predicate(*args)
+    return not_predicate
+
 def is_tile(*tiles):
     """Return a predicate function for `find()` that will
     find all coordinates containing one of `tiles`."""

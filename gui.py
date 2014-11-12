@@ -66,10 +66,10 @@ class TileMapGUI(object):
         outline_width = 1
         for room, color in izip(self.rooms, colors):
             rect = self.canvas.create_rectangle(
-                room.x * self.tile_size_x,
-                room.y * self.tile_size_y,
-                (room.x + room.width) * self.tile_size_x - outline_width,
-                (room.y + room.height) * self.tile_size_y - outline_width,
+                room.tl.x * self.tile_size_x,
+                room.tl.y * self.tile_size_y,
+                room.br.x * self.tile_size_x - outline_width,
+                room.br.y * self.tile_size_y - outline_width,
                 fill='',
                 outline=color,
                 width=outline_width,
