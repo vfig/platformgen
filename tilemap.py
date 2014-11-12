@@ -1,5 +1,4 @@
-__all__ = ('Coord', 'TileMap', 'make_coord', 'coord_width', 'coord_height',
-    'coord_add', 'coord_sub', 'coord_range')
+__all__ = ('Coord', 'TileMap')
 
 from collections import defaultdict, namedtuple
 from filters import is_tile
@@ -27,22 +26,36 @@ class TileMapStorage(object):
             storage.tiles.append(list(self.tiles[y]))
         return storage
 
-Coord = namedtuple('Coord', ['x', 'y'])
+class Coord(namedtuple('Coord', ['x', 'y'])):
+    @classmethod
+    def from_tuple(cls, tup):
+        if isinstance(tup, cls):
+            return tup
+        else:
+            return cls(tup[0], tup[1])
 
-def make_coord(tup):
-    return Coord(tup[0], tup[1])
-def coord_width(c1, c2):
-    return (c2.x - c1.x)
-def coord_height(c1, c2):
-    return (c2.y - c1.y)
-def coord_add(c1, c2):
-    return Coord(c1.x + c2.x, c1.y + c2.y)
-def coord_sub(c1, c2):
-    return Coord(c1.x - c2.x, c1.y - c2.y)
-def coord_range(c1, c2):
-    for y in range(c1.y, c2.y):
-        for x in range(c1.x, c2.x):
-            yield Coord(x, y)
+    @classmethod
+    def range(cls, c1, c2):
+        for y in range(c1[1], c2[1]):
+            for x in range(c1[0], c2[0]):
+                yield Coord(x, y)
+
+    @classmethod
+    def width(cls, c1, c2):
+        return abs(c1[0] - c2[0])
+
+    @classmethod
+    def height(cls, c1, c2):
+        return abs(c1[1] - c2[1])
+
+    def __add__(self, other):
+        return self.__class__(self[0] + other[0], self[1] + other[1])
+
+    def __sub__(self, other):
+        return self.__class__(self[0] - other[0], self[1] - other[1])
+
+    def __mul__(self, scalar):
+        return self.__class__(self[0] * scalar, self[1] * scalar)
 
 class TileMap(object):
     """Subscriptable, editable view onto a TileMap."""
@@ -51,12 +64,12 @@ class TileMap(object):
         if tl is None:
             tl = Coord(0, 0)
         else:
-            tl = make_coord(tl)
+            tl = Coord.from_tuple(tl)
 
         if br is None:
             br = Coord(tl.x + width, tl.y + height)
         else:
-            br = make_coord(br)
+            br = Coord.from_tuple(br)
 
         if storage is None:
             storage = TileMapStorage(width, height)
@@ -75,11 +88,11 @@ class TileMap(object):
 
     @property
     def width(self):
-        return coord_width(self.tl, self.br)
+        return Coord.width(self.tl, self.br)
 
     @property
     def height(self):
-        return coord_height(self.tl, self.br)
+        return Coord.height(self.tl, self.br)
 
     @classmethod
     def clone(cls, tile_map):
@@ -144,7 +157,7 @@ class TileMap(object):
     def __getitem__(self, subscript):
         """Return the value at (x, y), or a subview of the range (if either x or y is a slice)."""
         tl, br = self._parse_subscript(subscript)
-        if coord_width(tl, br) == 1 and coord_height(tl, br) == 1:
+        if Coord.width(tl, br) == 1 and Coord.height(tl, br) == 1:
             tl = self._local_to_storage(tl)
             return self.storage[tl]
         else:
@@ -154,13 +167,13 @@ class TileMap(object):
         """Set the value at (x, y), or fill the range (if either x or y is a slice) with the value."""
         tl, br = self._parse_subscript(subscript)
         if isinstance(value, TileMap):
-            for coord in coord_range(tl, br):
+            for coord in Coord.range(tl, br):
                 coord = self._local_to_storage(coord)
                 other_coord = Coord(coord.x - tl.x, coord.y - tl.y)
                 other_coord = value._local_to_storage(other_coord)
                 self.storage[coord] = value.storage[other_coord]
         else:
-            if coord_width(tl, br) == 1 and coord_height(tl, br) == 1:
+            if Coord.width(tl, br) == 1 and Coord.height(tl, br) == 1:
                 tl = self._local_to_storage(tl)
                 self.storage[tl] = value
             else:
@@ -184,7 +197,7 @@ class TileMap(object):
         Return an iterable of all coordinates for which
         `predicate(tile_map, coord)` returns True.
         """
-        for coord in coord_range(self.tl, self.br):
+        for coord in Coord.range(self.tl, self.br):
             tile = self.storage[coord]
             arg = self._storage_to_local(coord)
             if predicate(self, arg):
@@ -202,7 +215,7 @@ class TileMap(object):
         def in_range(coord):
             return (coord.x < end.x and coord.y < end.y)
         while in_range(coord) and not predicate(self, coord):
-            coord = coord_add(coord, increment)
+            coord += increment
         if in_range(coord):
             return coord
         else:
@@ -214,7 +227,7 @@ class TileMap(object):
         return subview
 
     def fill(self, value):
-        for coord in coord_range(self.tl, self.br):
+        for coord in Coord.range(self.tl, self.br):
             self.storage[coord] = value
 
     def subview(self, tl=None, br=None):
@@ -222,18 +235,18 @@ class TileMap(object):
         if tl is None:
             tl = Coord(0, 0)
         else:
-            tl = make_coord(tl)
+            tl = Coord.from_tuple(tl)
         if br is None:
             br = Coord(self.width, self.height)
         else:
-            br = make_coord(br)
+            br = Coord.from_tuple(br)
         tl = self._local_to_storage(tl)
         br = self._local_to_storage(br)
         return self.__class__(tl=tl, br=br, storage=self.storage)
 
     def linearize(self):
         """Return a linear iterable of all values in this tile map."""
-        return (self.storage[coord] for coord in coord_range(self.tl, self.br))
+        return (self.storage[coord] for coord in Coord.range(self.tl, self.br))
 
     def split_x(self, x):
         """Return a pair of views that are the halves of the tile map split vertically at `x`."""

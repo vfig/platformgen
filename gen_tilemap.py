@@ -120,12 +120,15 @@ def generate_rooms(tile_map):
 def generate_room_index(rooms):
     index = {}
     for room in rooms:
-        for coord in coord_range(room.tl, room.br):
+        for coord in Coord.range(room.tl, room.br):
             index[coord] = room
     return index
 
 
 def calculate_walk_graph(tile_map):
+    def find_top_left_empty():
+        empty_coords = tile_map.find(is_tile(TILE_EMPTY))
+        return reduce(closest_to(0, 0), empty_coords)
     def is_solid(coord):
         return (tile_map.get(coord) in SOLID_TILES)
     def is_ladder(coord):
@@ -133,21 +136,17 @@ def calculate_walk_graph(tile_map):
     def is_empty(coord):
         return (tile_map.get(coord) == TILE_EMPTY)
 
-    def find_top_left_empty():
-        empty_coords = tile_map.find(is_tile(TILE_EMPTY))
-        return reduce(closest_to(0, 0), empty_coords)
-    def to_floor(coord):
-        floor_coord = tile_map.cast_until(coord, Coord(0, 1), is_tile(*SOLID_TILES))
-        return coord_add(floor_coord, Coord(0, -1))
+    def find_floor(coord):
+        return tile_map.cast_until(coord, Coord(0, 1), is_tile(*SOLID_TILES))
 
     # For each coord, store a boolean if it can be walked on
     coord_is_walkable = defaultdict(lambda: False)
-    for coord in coord_range(Coord(0, 0), Coord(tile_map.width, tile_map.height)):
+    for coord in Coord.range((0, 0), (tile_map.width, tile_map.height)):
         """A coord is walkable if it is above a floor or on a ladder."""
-        up =  coord_add(coord, Coord(0, -1))
-        down = coord_add(coord, Coord(0, 1))
-        left = coord_add(coord, Coord(-1, 0))
-        right = coord_add(coord, Coord(1, 0))
+        up =  coord - (0, 1)
+        down = coord + (0, 1)
+        left = coord - (1, 0)
+        right = coord + Coord(1, 0)
 
         down_is_floor = is_solid(down)
         down_is_ladder = is_ladder(down)
@@ -166,17 +165,18 @@ def calculate_walk_graph(tile_map):
     # For each coord, store a list of the coords you can walk to
     coord_reachability = defaultdict(list)
     # Start at the top left, just above the floor
-    to_search = [to_floor(find_top_left_empty())]
+    start_coord = find_floor(find_top_left_empty()) - Coord(0, 1)
+    to_search = [start_coord]
     while to_search:
         coord = to_search.pop()
         if not coord_is_walkable[coord]: continue
         if coord in coord_reachability: continue
         reachable = coord_reachability[coord]
 
-        up =  coord_add(coord, Coord(0, -1))
-        down = coord_add(coord, Coord(0, 1))
-        left = coord_add(coord, Coord(-1, 0))
-        right = coord_add(coord, Coord(1, 0))
+        up =  coord - (0, 1)
+        down = coord + (0, 1)
+        left = coord - (1, 0)
+        right = coord + (1, 0)
 
         # Can always work to neighbouring walkable coords
         if coord_is_walkable[up]:
@@ -190,9 +190,9 @@ def calculate_walk_graph(tile_map):
             to_search.append(left)
         else:
             # Check if we can drop off an edge here
-            if is_empty(left) and is_empty(coord_add(left, Coord(0, 1))):
-                drop_to_coord = to_floor(left)
-                if coord_sub(drop_to_coord, left).y < WALK_DROP_HEIGHT:
+            if is_empty(left) and is_empty(left + (0, 1)):
+                drop_to_coord = find_floor(left) - (0, 1)
+                if Coord.height(left, drop_to_coord) <= WALK_DROP_HEIGHT:
                     reachable.append(drop_to_coord)
                     to_search.append(drop_to_coord)
         if coord_is_walkable[right]:
@@ -200,26 +200,11 @@ def calculate_walk_graph(tile_map):
             to_search.append(right)
         else:
             # Check if we can drop off an edge here
-            if is_empty(right) and is_empty(coord_add(right, Coord(0, 1))):
-                drop_to_coord = to_floor(right)
-                if coord_sub(drop_to_coord, right).y < WALK_DROP_HEIGHT:
+            if is_empty(right) and is_empty(right + (0, 1)):
+                drop_to_coord = find_floor(right) - (0, 1)
+                if Coord.height(right, drop_to_coord) <= WALK_DROP_HEIGHT:
                     reachable.append(drop_to_coord)
                     to_search.append(drop_to_coord)
-
-        # if can_walk or True:
-        #     # Look for neighbouring coords
-        #     left_is_empty = is_empty(left)
-        #     right_is_empty = is_empty(right)
-        #     left_is_ladder = is_ladder(left)
-        #     right_is_ladder = is_ladder(right)
-        #     if left_is_empty or left_is_ladder:
-        #         to_search.append(left)
-        #     if right_is_empty or right_is_ladder:
-        #         to_search.append(right)
-        #     if up_is_ladder:
-        #         to_search.append(up)
-        #     if down_is_ladder:
-        #         to_search.append(down)
 
     return coord_reachability
 
