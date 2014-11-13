@@ -40,6 +40,9 @@ LADDER_VERTICAL_SPACE = 0
 
 WALK_DROP_HEIGHT = 8
 
+STAIR_CHANCE = 1
+STAIR_MAXIMUM_HEIGHT = 4
+
 # Tile types
 TILE_EMPTY = 0
 TILE_FLOOR = 1
@@ -359,8 +362,9 @@ def generate_floor_stairs(tile_map):
         wall_direction = -stair_direction
         wall_coord = stair_coord + wall_direction
 
-        # Measure the space below the stair coordinate
+        # Ensure the stair is not too high
         stair_height = height_above_floor(stair_coord)
+        if stair_height > STAIR_MAXIMUM_HEIGHT: return False
         # Ensure there is standing room above the wall
         if not is_empty_above(wall_coord, 2): return False
         # Ensure there is wall all the way down
@@ -385,6 +389,8 @@ def generate_floor_stairs(tile_map):
 
     stairs = []
     for stair_coord in tile_map.find(is_stair_location):
+        should_make_stair = (random.random() < STAIR_CHANCE)
+        if not should_make_stair: continue
         stair_direction = get_stair_direction(stair_coord)
         coord = stair_coord
         while is_empty(coord):
