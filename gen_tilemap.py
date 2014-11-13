@@ -414,12 +414,12 @@ def generate_random_ladders(tile_map):
         # First line must be empty
         if y >= tile_map.height: return False
         line = tile_map[x:x+3,y]; y += 1
-        if TILE_WALL in line or TILE_FLOOR in line or TILE_CEILING in line or TILE_LADDER in line:
+        if TILE_WALL in line or TILE_FLOOR in line or TILE_CEILING in line or TILE_LADDER in line or TILE_STAIR in line:
             return False
         # Second line must be all solid
         if y >= tile_map.height: return False
         line = tile_map[x:x+3,y]; y += 1
-        if TILE_EMPTY in line or TILE_LADDER in line:
+        if TILE_EMPTY in line or TILE_LADDER in line or TILE_STAIR in line:
             return False
         # Subsequent lines must be all solid or all empty
         solid_height = 1
@@ -429,6 +429,7 @@ def generate_random_ladders(tile_map):
             if y >= tile_map.height: return False
             line = tile_map[x:x+3,y]; y += 1
             found_empty = found_solid = False
+            if TILE_STAIR in line: return False
             if TILE_EMPTY in line or TILE_LADDER in line:
                 found_empty = True
             if TILE_WALL in line or TILE_FLOOR in line or TILE_CEILING in line or TILE_LADDER in line:
@@ -445,6 +446,7 @@ def generate_random_ladders(tile_map):
             if y >= tile_map.height: return False
             line = tile_map[x:x+3,y]; y += 1
             found_empty = found_solid = False
+            if TILE_STAIR in line: return False
             if TILE_EMPTY in line or TILE_LADDER in line:
                 found_empty = True
             if TILE_WALL in line or TILE_FLOOR in line or TILE_CEILING in line or TILE_LADDER in line:
