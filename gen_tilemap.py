@@ -53,7 +53,10 @@ TILE_STAIR = 5
 SOLID_TILES = set([TILE_FLOOR, TILE_CEILING, TILE_WALL, TILE_STAIR])
 
 # seed = int(time.time())
-seed = 1415535932
+seed = 1415535932 # Contains an area can enter but not leave
+# seed = 1415878236 # Neat layout
+# seed = 1415878343 # Mostly unreachable!
+# seed = 1415878501 # Another neat layout
 print "random seed:", seed
 random.seed(seed)
 
