@@ -105,6 +105,10 @@ class TileMap(object):
     def clone(cls, tile_map):
         return cls(tl=tile_map.tl, br=tile_map.br, storage=tile_map.storage)
 
+    def to_other(self, coord, other):
+        return Coord(coord.x + self.tl.x - other.tl.x,
+            coord.y + self.tl.y - other.tl.y)
+
     def _local_to_storage(self, coord):
         return Coord(coord.x + self.tl.x, coord.y + self.tl.y)
 
@@ -189,7 +193,7 @@ class TileMap(object):
     def __contains__(self, value):
         if isinstance(value, TileMap):
             raise TypeError("__contains__ does not support TileMaps yet.")
-        for coord in self.find(is_tile(value)):
+        for coord, __ in self.find(is_tile(value)):
             return True
         return False
 
@@ -201,14 +205,15 @@ class TileMap(object):
 
     def find(self, predicate):
         """
-        Return an iterable of all coordinates for which
-        `predicate(tile_map, coord)` returns True.
+        Return an iterable of `(coordinate, data)` for which
+        `predicate(tile_map, coord)` returns a not False `data`.
         """
         for coord in Coord.range(self.tl, self.br):
             tile = self.storage[coord]
             arg = self._storage_to_local(coord)
-            if predicate(self, arg):
-                yield arg
+            data = predicate(self, arg)
+            if data:
+                yield (arg, data)
 
     def cast_until(self, start, increment, predicate):
         """

@@ -1,5 +1,5 @@
 #!/usr/local/bin/python
-import random, time
+import itertools, random, time, sys
 from collections import defaultdict
 from color import ColorGenerator
 from filters import *
@@ -60,21 +60,34 @@ seed = 1415535932 # Contains an area can enter but not leave
 print "random seed:", seed
 random.seed(seed)
 
+def log(s):
+    sys.stderr.write(s)
+    sys.stderr.write('\n')
+    sys.stderr.flush()
+
 def main():
     tile_size = 8
     tile_map = TileMap(width=TILE_MAP_WIDTH, height=TILE_MAP_HEIGHT)
+    log("Rooms...")
     rooms = generate_rooms(tile_map)
+    log("Filled rooms...")
     for room in rooms:
         generate_filled_room(room)
+    log("Floors and ceilings...")
     for room in rooms:
         generate_floor_and_ceiling(room)
+    log("Random walls...")
     for room in rooms:
         generate_random_walls(room)
+    log("Required walls...")
     for room in rooms:
         generate_required_walls(room, left_hand=True)
         generate_required_walls(room, left_hand=False)
+    log("Stairs...")
     generate_floor_stairs(tile_map)
+    log("Random ladders...")
     generate_random_ladders(tile_map)
+    log("Walk graph...")
     walk_graph = calculate_walk_graph(tile_map)
 
     # room_index = generate_room_index(rooms)
@@ -137,6 +150,7 @@ def generate_room_index(rooms):
 def calculate_walk_graph(tile_map):
     def find_top_left_empty():
         empty_coords = tile_map.find(is_tile(TILE_EMPTY))
+        empty_coords = (coord for (coord, __) in empty_coords)
         return reduce(closest_to(0, 0), empty_coords)
     def is_solid(coord):
         return (tile_map.get(coord) in SOLID_TILES)
@@ -346,27 +360,29 @@ def generate_floor_stairs(tile_map):
         else:
             return None
 
-    def is_stair_location(tile_map, stair_coord):
+    def is_stair_location(tile_map, stair_start):
         """A stair location is one like:
 
           - E E E - -     E: empty
           - E E E E -     W: wall/floor
           = W[s]E E -     s: stair location, initially empty
           = W f s E -     f: backfill for stair, initially empty
-          = W W W W =     =/-: don't care
+          = W W W[W]=     =/-: don't care
 
-        We should look for the corner..... (bracketed above) that
-        has the appropriate surrounding geometry.
+        stair_start is `[s]`, stair_end is `[W]`.
+
+        Return `stair_end` coordinate if can place a stair starting
+        at `coord`, or False if not.
         """
-        if not is_empty(stair_coord): return False
-        if not is_empty_above(stair_coord, 2): return False
-        stair_direction = get_stair_direction(stair_coord)
+        if not is_empty(stair_start): return False
+        if not is_empty_above(stair_start, 2): return False
+        stair_direction = get_stair_direction(stair_start)
         if stair_direction is None: return False
         wall_direction = -stair_direction
-        wall_coord = stair_coord + wall_direction
+        wall_coord = stair_start + wall_direction
 
         # Ensure the stair is not too high
-        stair_height = height_above_floor(stair_coord)
+        stair_height = height_above_floor(stair_start)
         if stair_height > STAIR_MAXIMUM_HEIGHT: return False
         # Ensure there is standing room above the wall
         if not is_empty_above(wall_coord, 2): return False
@@ -374,7 +390,7 @@ def generate_floor_stairs(tile_map):
         if wall_height(wall_coord) < stair_height: return False
         # Then, moving diagonally down and right until hit floor:
         height = stair_height
-        step_coord = stair_coord
+        step_coord = stair_start
         while height > 1:
             height -= 1
             step_coord += (stair_direction + (0, 1))
@@ -384,102 +400,95 @@ def generate_floor_stairs(tile_map):
             if not is_empty_above(step_coord, 3): return False
             # Ensure there is space - n below before a floor
             if height_above_floor(step_coord) != height: return False
-        end_floor_coord = step_coord + (stair_direction + (0, 1))
+        stair_end = step_coord + (stair_direction + (0, 1))
         # Check the floor where the stair ends
-        if not is_solid(end_floor_coord): return False
-        if not is_empty_above(end_floor_coord, 3): return False
-        return True
+        if not is_solid(stair_end): return False
+        if not is_empty_above(stair_end, 3): return False
+        return stair_end
 
     stairs = []
-    for stair_coord in tile_map.find(is_stair_location):
+    for stair_start, stair_end in tile_map.find(is_stair_location):
         should_make_stair = (random.random() < STAIR_CHANCE)
         if not should_make_stair: continue
-        stair_direction = get_stair_direction(stair_coord)
-        coord = stair_coord
+
+        step = Coord(
+            1 if (stair_end.x > stair_start.x) else -1,
+            1 if (stair_end.y > stair_start.y) else -1)
+        coord = stair_start
         while is_empty(coord):
             floor_coord = to_floor(coord)
             tile_map[coord:(floor_coord + Coord.X)] = TILE_FLOOR
             tile_map[coord] = TILE_STAIR
-            coord += stair_direction + Coord.Y
+            coord += step
 
 def generate_random_ladders(tile_map):
     """Place random ladders."""
 
-    def can_place_ladder(x, y):
-        """Return (ladder_start, ladder_end) if can place a ladder at (x, y), where
-        ladder_start and ladder end are both coordinate pairs of the actual ladder.
+    def can_place_ladder(tile_map, ladder_start):
+        """Return a `ladder_end` coordinate if a ladder can be placed
+        starting at `coord`, or `False` if it cannot.
 
-        Searches for:
+              ladder_start
+                    |
+                    V
             [empty empty empty]
             [solid solid solid]+
             [empty empty empty]{2,}
             [solid solid solid]
-
-        Choose ladders randomly, ensuring they aren't chosen too close together.
+                           ^
+                           |
+                       ladder_end
         """
-        ladder_start = (x + 1, y)
-        # Make sure there's enough space
-        if x >= tile_map.width - 3: return False
-        # First line must be empty
-        if y >= tile_map.height: return False
-        line = tile_map[x:x+3,y]; y += 1
-        if TILE_WALL in line or TILE_FLOOR in line or TILE_CEILING in line or TILE_LADDER in line or TILE_STAIR in line:
-            return False
-        # Second line must be all solid
-        if y >= tile_map.height: return False
-        line = tile_map[x:x+3,y]; y += 1
-        if TILE_EMPTY in line or TILE_LADDER in line or TILE_STAIR in line:
-            return False
-        # Subsequent lines must be all solid or all empty
-        solid_height = 1
-        empty_height = 0
-        solid = True
-        while solid:
-            if y >= tile_map.height: return False
-            line = tile_map[x:x+3,y]; y += 1
-            found_empty = found_solid = False
-            if TILE_STAIR in line: return False
-            if TILE_EMPTY in line or TILE_LADDER in line:
-                found_empty = True
-            if TILE_WALL in line or TILE_FLOOR in line or TILE_CEILING in line or TILE_LADDER in line:
-                found_solid = True
-            if found_empty and not found_solid:
-                empty_height += 1
-                solid = False
-            elif found_solid and not found_empty:
-                solid_height += 1
-            else:
-                return False
-        # Then there must be at least LADDER_MINIMUM_HEIGHT clear lines before a solid floor
-        while not solid:
-            if y >= tile_map.height: return False
-            line = tile_map[x:x+3,y]; y += 1
-            found_empty = found_solid = False
-            if TILE_STAIR in line: return False
-            if TILE_EMPTY in line or TILE_LADDER in line:
-                found_empty = True
-            if TILE_WALL in line or TILE_FLOOR in line or TILE_CEILING in line or TILE_LADDER in line:
-                found_solid = True
-            if found_empty and not found_solid:
-                empty_height += 1
-            elif found_solid and not found_empty:
-                solid = True
-            else:
-                return False
-        if empty_height < LADDER_MINIMUM_HEIGHT: return False
-        if empty_height + solid_height + 1 > LADDER_MAXIMUM_HEIGHT: return False
-        ladder_end = (ladder_start[0] + 1 , ladder_start[1] + solid_height + empty_height + 1)
-        return (ladder_start, ladder_end)
+        if ladder_start.x < 1 or ladder_start.x >= tile_map.width - 2: return False
+        if ladder_start.y < 0 or ladder_start.y >= tile_map.height - 1: return False
 
-    ladders = []
-    for y in range(tile_map.height):
-        for x in range(tile_map.width):
-            ladder = can_place_ladder(x, y)
-            if not ladder: continue
-            ladders.append(ladder)
+        tl = Coord(ladder_start.x - 1, ladder_start.y)
+        br = Coord(ladder_start.x + 2, tile_map.height)
+        subview = tile_map[tl:br]
 
+        def is_empty_line(y):
+            if y >= subview.height: return False
+            for x in range(subview.width):
+                if subview[x, y] != TILE_EMPTY:
+                    return False
+            return True
+        def is_solid_line(y):
+            if y >= subview.height: return False
+            for x in range(subview.width):
+                if subview[x, y] not in (TILE_WALL, TILE_FLOOR, TILE_CEILING):
+                    return False
+            return True
+
+        empty_lines_above = 0
+        solid_lines_above = 0
+        empty_lines_below = 0
+        solid_lines_below = 0
+        y = 0
+        while is_empty_line(y):
+            empty_lines_above += 1
+            y += 1
+        if empty_lines_above != 1: return False
+        while is_solid_line(y):
+            solid_lines_above += 1
+            y += 1
+        if solid_lines_above < 1: return False
+        while is_empty_line(y):
+            empty_lines_below += 1
+            y += 1
+        if empty_lines_below < LADDER_MINIMUM_HEIGHT: return False
+        if is_solid_line(y):
+            solid_lines_below += 1
+        if solid_lines_below != 1: return False
+
+        ladder_end = Coord(subview.width - 1, y)
+        ladder_end = subview.to_other(ladder_end, tile_map)
+        if Coord.height(ladder_start, ladder_end) > LADDER_MAXIMUM_HEIGHT: return False
+
+        return ladder_end
+
+    ladders = list(tile_map.find(can_place_ladder))
     ladder_count = int(round(float(len(ladders)) * LADDER_DENSITY))
-    #10th ladder and 1st ladder
+
     while ladder_count and ladders:
         # Find a ladder position and build it
         ladder = random.choice(ladders)
@@ -512,7 +521,7 @@ class Room(TileMap):
         return self[:,:self.ceiling_height]
 
     def is_filled(self):
-        for coord in self.find(is_not(is_tile(*SOLID_TILES))):
+        for coord, __ in self.find(is_not(is_tile(*SOLID_TILES))):
             return False
         return True
 
